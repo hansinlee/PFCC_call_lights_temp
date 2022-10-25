@@ -6,7 +6,7 @@ import functions
 from functions import turn_on_call_light, turn_all_off
 
 
-LED1 = Pin(0, Pin.
+LED1 = Pin(0, Pin.OUT)
 LED2 = Pin(15, Pin.OUT)
 ALL_LED = Pin(0, Pin.OUT)
 buzzer = PWM(Pin(22))
