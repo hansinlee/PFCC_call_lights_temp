@@ -105,11 +105,33 @@ while True:
             buzzer.duty_u16(60000)
             utime.sleep(1)
             
+    if bed2.value() == 0:
+        print("2") 
+        utime.sleep_ms(300)
+        if bed2.value() == 0:
+            client.publish(topic_pub, 'Call Light Pressed ')
+            LED1.value(1)
+            buzzer.freq(300)
+            buzzer.duty_u16(60000)
+            utime.sleep(1)
+            
+    if bth1.value() == 0:
+        print("Bathroom") 
+        utime.sleep_ms(300)
+        if bth1.value() == 0:
+            client.publish(topic_pub, 'Bathroom Light Pressed')
+            LED2.value(1)
+            buzzer.freq(300)
+            buzzer.duty_u16(60000)
+            utime.sleep(1)
+            
     if off_all.value() == 0:
         print("0") 
         utime.sleep_ms(300)
         if off_all.value() == 0:
-            client.publish(topic_pub, 'Call Light Off')
+            client.publish(topic_pub, 'Bed 1 Off')
+            client.publish(topic_pub, 'Bed 2 Off')
+            client.publish(topic_pub, 'Bathroom Off')
             LED1.value(0)
             LED2.value(0)
             buzzer.duty_u16(0)
