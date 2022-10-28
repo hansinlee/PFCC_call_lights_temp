@@ -104,6 +104,7 @@ while True:
             LED1.value(1)
             buzzer.freq(300)
             buzzer.duty_u16(60000)
+        utime.sleep(1)
             
     if off_all.value() ==0:
         client.publish(topic_pub, 'Bed 1 has been turned off.')
@@ -111,4 +112,4 @@ while True:
         LED2.value(0)
         buzzer.duty_u16(0)
         print ("All Off")
-        utime.sleep_ms(300)
+        utime.sleep_ms(1)
