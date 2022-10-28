@@ -58,9 +58,9 @@ def sub_cb(topic, msg):
     msg = msg.decode('utf-8')
     print(msg)
     if msg == 'on':
-        LED1.value(0)
-    elif msg == 'off':
         LED1.value(1)
+    elif msg == 'off':
+        LED1.value(0)
 
 def mqtt_connect():
     client = MQTTClient(client_id, mqtt_server)
@@ -106,7 +106,9 @@ while True:
             buzzer.duty_u16(60000)
             
     if off_all.value() ==0:
+        client.publish(topic_pub, 'Bed 1 has been turned off.')
         LED1.value(0)
         LED2.value(0)
         buzzer.duty_u16(0)
         print ("All Off")
+        utime.sleep_ms(300)
