@@ -106,7 +106,7 @@ while True:
             buzzer.duty_u16(60000)
             
     if off_all.value() ==0:
-        LED1_LED.value(0)
-        LED2_LED.value(0)
+        LED1.value(0)
+        LED2.value(0)
         buzzer.duty_u16(0)
         print ("All Off")
