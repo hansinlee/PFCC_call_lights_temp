@@ -51,7 +51,7 @@ mqtt_server = secrets.mqtt_id
 client_id = ubinascii.hexlify(machine.unique_id())
 topic_sub = b'Sub'
 topic_pub = b'Pub'
-topic_msg = b'Test Msg'
+topic_msg = b'MQTT Connected'
 
 def sub_cb(topic, msg):
     print("New message on topic {}".format(topic.decode('utf-8')))
@@ -85,7 +85,6 @@ LED2 = Pin(15, Pin.OUT)
 ALL_LED = Pin(0, Pin.OUT)
 buzzer = PWM(Pin(22))
 
-
 bed1 = Pin(1, Pin.IN, Pin.PULL_UP)
 bed2 = Pin(26, Pin.IN, Pin.PULL_UP)
 bth1 = Pin(14, Pin.IN, Pin.PULL_UP)
@@ -97,19 +96,21 @@ while True:
     client.subscribe(topic_sub)
     
     if bed1.value() == 0:
-        client.publish(topic_pub, 'Bed 1 has been pressed.')
         print("1") 
         utime.sleep_ms(300)
         if bed1.value() == 0:
+            client.publish(topic_pub, 'Call Light Pressed')
             LED1.value(1)
             buzzer.freq(300)
             buzzer.duty_u16(60000)
-        utime.sleep(1)
+            utime.sleep(1)
             
-    if off_all.value() ==0:
-        client.publish(topic_pub, 'Bed 1 has been turned off.')
-        LED1.value(0)
-        LED2.value(0)
-        buzzer.duty_u16(0)
-        print ("All Off")
-        utime.sleep_ms(1)
+    if off_all.value() == 0:
+        print("0") 
+        utime.sleep_ms(300)
+        if off_all.value() == 0:
+            client.publish(topic_pub, 'Call Light Off')
+            LED1.value(0)
+            LED2.value(0)
+            buzzer.duty_u16(0)
+            utime.sleep_ms(1)
