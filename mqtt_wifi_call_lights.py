@@ -11,6 +11,8 @@ import socket
 import secrets
 rp2.country('US')
 
+############ Wifi Connection ############
+
 wlan = network.WLAN(network.STA_IF)
 wlan.active(True)
 
@@ -47,6 +49,8 @@ else:
     status = wlan.ifconfig()
     print('ip = ' + status[0])
 
+############ MQTT Connection ############
+
 mqtt_server = secrets.mqtt_id
 client_id = ubinascii.hexlify(machine.unique_id())
 topic_sub = b'Sub'
@@ -80,6 +84,25 @@ except OSError as e:
     
 client.publish(topic_pub, topic_msg)
 
+
+############ Server Connection ############
+
+addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
+s = socket.socket()
+s.bind(addr)
+s.listen(1)
+print('Listening on', addr)
+
+############ CSV to Server ############
+
+# file = open('room_41_log.csv', 'w')
+# file.write("Date , Time , Trigger")
+file = open('room_41_log.csv', 'a')
+
+
+
+############ Defining Variables ############
+
 LED1 = Pin(0, Pin.OUT)
 LED2 = Pin(15, Pin.OUT)
 ALL_LED = Pin(0, Pin.OUT)
@@ -94,6 +117,20 @@ while True:
     
     client.set_callback(sub_cb)
     client.subscribe(topic_sub)
+    
+############ Listening for Connections ############
+    try:
+        cl, addr = s.accept()
+        print('Client connected from', addr)
+        request = cl.recv(1024)
+        print("request: ")
+        print(request)
+    except OSError as e:
+        cl.close()
+        print('connection closed')           
+    
+    
+############ Buttons ############
     
     if bed1.value() == 0:
         print("1") 
