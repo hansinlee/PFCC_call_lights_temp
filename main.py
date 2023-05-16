@@ -1,7 +1,3 @@
-# range.py Test of asynchronous mqtt client with clean session False.
-# (C) Copyright Peter Hinch 2017-2022.
-
-
 from mqtt_as import MQTTClient
 from mqtt_local import wifi_led, blue_led, config
 import uasyncio as asyncio
