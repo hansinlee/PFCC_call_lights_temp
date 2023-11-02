@@ -66,7 +66,18 @@ async def button_handler(number, button, previous_state, pixel_color):
                 elif number == secrets.BATHROOM:
                     pixels.set_pixel_line(0, 3, pixel_color)
                     if client._has_connected:
-                        await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos = 1) 
+                        await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos = 1)
+                if secrets.NUMBER_OF_BEDS > 2:
+                    if number == "3":
+                        pixels.set_pixel_line(2, 2, pixel_color)
+                        if client._has_connected:
+                            print(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed')
+                            await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed', qos = 1)
+                    elif number == "4":
+                        pixels.set_pixel_line(3, 3, pixel_color)
+                        if client._has_connected:
+                            print(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed')
+                            await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed', qos = 1)
                 pixels.show()
                 buzzer.freq(300)
                 buzzer.duty_u16(60000)
