@@ -45,7 +45,6 @@ off_prev_state = off_btn.value()
 # Network
 wlan = network.WLAN(network.STA_IF)
 wlan_ip = wlan.ifconfig()
-
 # Button Handlers
 async def button_handler(number, button, previous_state, pixel_color):
     while True:
@@ -64,10 +63,10 @@ async def button_handler(number, button, previous_state, pixel_color):
                     if client._has_connected:
                         print(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed')
                         await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed', qos = 1)
-                elif number == "01 & 03":
+                elif number == secrets.BATHROOM:
                     pixels.set_pixel_line(0, 3, pixel_color)
                     if client._has_connected:
-                        await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Bathroom {secrets.BATHROOM} has been pressed', qos = 1) 
+                        await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos = 1) 
                 pixels.show()
                 buzzer.freq(300)
                 buzzer.duty_u16(60000)
@@ -82,7 +81,7 @@ def check_if_still_pressed(number, previous_state):
             pixels.set_pixel_line(0, 0, yellow)
         elif number == "2":
             pixels.set_pixel_line(1, 1, orange)
-        elif number == "01 & 03":
+        elif number == {secrets.BATHROOM}:
             pixels.set_pixel_line(0, 3, red)
         elif number == "3":
             pixels.set_pixel_line(2, 2, green)
@@ -91,6 +90,7 @@ def check_if_still_pressed(number, previous_state):
         pixels.show()
         buzzer.freq(300)
         buzzer.duty_u16(60000)
+
 
 
 async def off_handler(button, previous_state):
@@ -106,7 +106,7 @@ async def off_handler(button, previous_state):
                 buzzer.duty_u16(0)
                 check_if_still_pressed("1", bed1_btn.value())
                 check_if_still_pressed("2", bed2_btn.value())
-                check_if_still_pressed("01 & 03", bth_btn.value())
+                check_if_still_pressed({secrets.BATHROOM}, bth_btn.value())
                 if client._has_connected:
                     await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos = 1)
                 if secrets.NUMBER_OF_BEDS > 2:
@@ -121,36 +121,38 @@ async def messages(client):
         print(f'Topic: "{topic.decode()}" Message: "{msg.decode()}" Retained: {retained}')
         msg = msg.decode('utf-8')
         print(msg)
-        if msg == "Bed 1 has been pressed":
+        if msg == f"Room {secrets.ROOM_NUMBER}-1 has been pressed":
             pixels.set_pixel_line(0, 0, yellow)
             pixels.show()
             buzzer.freq(300)
             buzzer.duty_u16(60000)
-        if msg == "Bed 2 has been pressed":
+        if msg == f"Room {secrets.ROOM_NUMBER}-2 has been pressed":
             pixels.set_pixel_line(1, 1, orange)
             pixels.show()
             buzzer.freq(300)
             buzzer.duty_u16(60000)
         if msg == f"Room {secrets.ROOM_NUMBER}-3 has been pressed":
-            pixels.set_pixel_line(1, 1, orange)
+            pixels.set_pixel_line(2, 2, orange)
             pixels.show()
             buzzer.freq(300)
             buzzer.duty_u16(60000)
         if msg == f"Room {secrets.ROOM_NUMBER}-4 has been pressed":
-            pixels.set_pixel_line(1, 1, orange)
+            pixels.set_pixel_line(3, 3, orange)
             pixels.show()
             buzzer.freq(300)
             buzzer.duty_u16(60000)
-        if msg == "Bathroom has been pressed":
+        if msg == f"Bathroom {secrets.BATHROOM} has been pressed":
             pixels.set_pixel_line(0, 3, red)
             pixels.show()
             buzzer.freq(300)
             buzzer.duty_u16(60000)
-        if msg == 'Room 03 reset':
+        if msg == f'Room {secrets.ROOM_NUMBER} Reset':
             machine.reset()
-        if msg == 'Room 03 Update':
+        if msg == f'Room {secrets.ROOM_NUMBER} Update':
             ota_updater.update_and_install()
-        if msg == "Room has been answered":
+            if client._has_connected:
+                await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} has been updated! Please reset device.')
+        if msg == f"Room {secrets.ROOM_NUMBER} has been answered":
             pixels.clear()
             pixels.show()
             buzzer.duty_u16(0)
@@ -168,17 +170,21 @@ async def up(client):
         await client.up.wait()
         client.up.clear()
         print(wlan.ifconfig())
-        mac_addess = wlan.config('mac')
-        for digit in range(0,5):
-            print(str(hex(mac_addess[digit]))[2:4], ':', sep='', end = '')
-        print(str(hex(mac_addess[5]))[2:4] )
+        await asyncio.sleep_ms(2)
         await client.subscribe(f'Room {secrets.ROOM_NUMBER}', 1)
-       
+
+
 async def room_status():
+    mac_reformat = ''
+    mac_address = wlan.config('mac')
+    for digit in range(6):
+        mac_reformat += f'{mac_address[digit]:02X}'
+        if digit < 5:
+            mac_reformat += ':'
+    await client.publish(f'Room {secrets.ROOM_NUMBER} MAC', mac_reformat, qos = 1)
+
     while True:
-        await asyncio.sleep_ms(20)
-        await client.publish(f"Room {secrets.ROOM_NUMBER}", f"Room {secrets.ROOM_NUMBER} connected!", qos = 1)
-        await client.publish(f'Room {secrets.ROOM_NUMBER}', str(wlan.ifconfig()), qos = 1)
+        await client.publish(f'Room {secrets.ROOM_NUMBER} IP', str(wlan.ifconfig()), qos = 1)
         await asyncio.sleep(480)
        
 async def main(client):
@@ -186,7 +192,7 @@ async def main(client):
 
     asyncio.create_task(button_handler("2", bed2_btn, bed2_prev_state, orange))
        
-    asyncio.create_task(button_handler("Bathroom 1 & Bathroom 2", bth_btn, bth_prev_state, red))
+    asyncio.create_task(button_handler(secrets.BATHROOM, bth_btn, bth_prev_state, red))
 
     if secrets.NUMBER_OF_BEDS > 2:
         asyncio.create_task(button_handler("3", bed3_btn, bed3_prev_state, green))
@@ -194,7 +200,7 @@ async def main(client):
         asyncio.create_task(button_handler("4", bed4_btn, bed4_prev_state, blue))
    
     asyncio.create_task(off_handler(off_btn, off_prev_state))
-    # asyncio.create_task(off_pb_handler())
+
     asyncio.create_task(room_status())
    
     try:
