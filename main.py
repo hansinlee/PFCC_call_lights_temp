@@ -1,14 +1,33 @@
-from mqtt_as import MQTTClient
-from mqtt_local import wifi_led, blue_led, config
+#two bed with shared bathroom main.py
+#neopixel version
+
+from mqtt_as import MQTTClient, config
 import uasyncio as asyncio
 from machine import Pin, PWM
+from neopixel import Neopixel
 import utime
+import network
+from ota import OTAUpdater
+import gc
+import secrets
 
-TOPIC = 'Room 37'
+gc.collect()
+
+ota_updater = OTAUpdater(secrets.FIRMWARE_URL, "main.py")
+
+numpix = 4
+pixels = Neopixel(numpix, 0, 0, "GRB")
+ 
+yellow = (255, 100, 0)
+orange = (255, 50, 0)
+green = (0, 255, 0)
+blue = (0, 0, 255)
+red = (255, 0, 0)
+
+pixels.brightness(100)
+
 outages = 0
-LED1 = PWM(Pin(0))
-LED2 = PWM(Pin(15))
-buzzer = PWM(Pin(22))
+buzzer = PWM(Pin(22)) #New PCB rev. 3 uses Pin(28)
 
 bed1_btn = Pin(1,Pin.IN,Pin.PULL_DOWN)
 bed1_prev_state = bed1_btn.value()
@@ -23,153 +42,179 @@ bth_prev_state = bth_btn.value()
 off_btn = Pin(4,Pin.IN,Pin.PULL_DOWN)
 off_prev_state = off_btn.value()
 
+# Network
+wlan = network.WLAN(network.STA_IF)
+wlan_ip = wlan.ifconfig()
 
-async def bed1_handler():
-    global bed1_prev_state
-    if (bed1_btn.value() == True) and (bed1_prev_state == False):
-        utime.sleep_ms(350)
-        if (bed1_btn.value() == True) and (bed1_prev_state == False):
-            bed1_prev_state = True
-    elif (bed1_btn.value() == False) and (bed1_prev_state == True):
-         bed1_prev_state = False
-         LED1.freq(600)
-         LED1.duty_u16(10000)
-         buzzer.freq(300)
-         buzzer.duty_u16(60000)
-         print("Bed 1 has been pressed")
-         await client.publish('37-1', 'Room 37-1 has been pressed', qos = 1)
-         
-    
-        
-async def bed2_handler():
-    global bed2_prev_state
-    if (bed2_btn.value() == True) and (bed2_prev_state == False):
-        utime.sleep_ms(250)
-        if (bed2_btn.value() == True) and (bed2_prev_state == False):
-            bed2_prev_state = True
-        
-    elif (bed2_btn.value() == False) and (bed2_prev_state == True):
-        bed2_prev_state = False
-        LED1.freq(600)
-        LED1.duty_u16(10000)
+# Button Handlers
+async def button_handler(number, button, previous_state, pixel_color):
+    while True:
+        await asyncio.sleep_ms(10)
+        if button.value() and not previous_state:
+            utime.sleep_ms(250)
+            if button.value() and not previous_state:
+                previous_state = True
+                if number == "1":
+                    pixels.set_pixel_line(0, 0, pixel_color)
+                    if client._has_connected:
+                        print(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed')
+                        await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed', qos = 1) 
+                elif number == "2":
+                    pixels.set_pixel_line(1, 1, pixel_color)
+                    if client._has_connected:
+                        print(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed')
+                        await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed', qos = 1)
+                elif number == "01 & 03":
+                    pixels.set_pixel_line(0, 3, pixel_color)
+                    if client._has_connected:
+                        await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Bathroom {secrets.BATHROOM} has been pressed', qos = 1) 
+                pixels.show()
+                buzzer.freq(300)
+                buzzer.duty_u16(60000)
+                print(f"{number} has been pressed")
+        elif not button.value() and previous_state:
+            previous_state = False
+        await asyncio.sleep_ms(10)
+
+def check_if_still_pressed(number, previous_state):
+    if previous_state == True:
+        if number == "1":
+            pixels.set_pixel_line(0, 0, yellow)
+        elif number == "2":
+            pixels.set_pixel_line(1, 1, orange)
+        elif number == "01 & 03":
+            pixels.set_pixel_line(0, 3, red)
+        elif number == "3":
+            pixels.set_pixel_line(2, 2, green)
+        elif number == "4":
+            pixels.set_pixel_line(3, 3, blue)
+        pixels.show()
         buzzer.freq(300)
         buzzer.duty_u16(60000)
-        print("Bed 2 has been pressed")
-        await client.publish('37-2', 'Room 37-2 has been pressed', qos = 1)
-
-            
-async def bth_handler():
-    global bth_prev_state
-    if (bth_btn.value() == True) and (bth_prev_state == False):
-        utime.sleep_ms(250)
-        if (bth_btn.value() == True) and (bth_prev_state == False):
-            bth_prev_state = True
-            LED2.freq(600)
-            LED2.duty_u16(10000)
-            buzzer.freq(300)
-            buzzer.duty_u16(60000)
-            print("Bathroom 37 has been pressed")
-            await client.publish('Bathroom 37 & 39', 'Bathroom 37 & 39 has been pressed', qos = 1)
-            
-    elif (bth_btn.value() == False) and (bth_prev_state == True):
-        bth_prev_state = False
-        await asyncio.sleep_ms(25)
 
 
-async def off_handler():
-    global off_prev_state
-    if (off_btn.value() == True) and (off_prev_state == False):
-        utime.sleep_ms(250)
-        if (off_btn.value() == True) and (off_prev_state == False):
-            off_prev_state = True
-            LED1.duty_u16(0)
-            LED2.duty_u16(0)
-            buzzer.duty_u16(0)
-            await client.publish('37-Off', 'Room 37 has been answered', qos = 1)
-            print("Room 37 has been answered")
-            
-    elif (off_btn.value() == False) and (off_prev_state == True):
-        off_prev_state = False
-        await asyncio.sleep_ms(25)
-
+async def off_handler(button, previous_state):
+    while True:
+        await asyncio.sleep_ms(10)
+        if button.value() and not previous_state:
+            utime.sleep_ms(250)
+            if button.value() and not previous_state:
+                previous_state = True
+                pixels.clear()
+                pixels.show()
+                print('pixels.clear')
+                buzzer.duty_u16(0)
+                check_if_still_pressed("1", bed1_btn.value())
+                check_if_still_pressed("2", bed2_btn.value())
+                check_if_still_pressed("01 & 03", bth_btn.value())
+                if client._has_connected:
+                    await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos = 1)
+                if secrets.NUMBER_OF_BEDS > 2:
+                    check_if_still_pressed("3", bed3_btn.value())
+                    check_if_still_pressed("4", bed4_btn.value())
+        elif not button.value() and previous_state:
+            previous_state = False
+        await asyncio.sleep_ms(10)
 
 async def messages(client):
     async for topic, msg, retained in client.queue:
         print(f'Topic: "{topic.decode()}" Message: "{msg.decode()}" Retained: {retained}')
         msg = msg.decode('utf-8')
         print(msg)
-        if msg == 'Room 37-1 has been pressed':
-            LED1.freq(600)
-            LED1.duty_u16(10000)
+        if msg == "Bed 1 has been pressed":
+            pixels.set_pixel_line(0, 0, yellow)
+            pixels.show()
             buzzer.freq(300)
             buzzer.duty_u16(60000)
-
-        if msg == 'Room 37-2 has been pressed':
-            LED1.freq(600)
-            LED1.duty_u16(10000)
+        if msg == "Bed 2 has been pressed":
+            pixels.set_pixel_line(1, 1, orange)
+            pixels.show()
             buzzer.freq(300)
             buzzer.duty_u16(60000)
-            
-        if msg == 'Bathroom 37 & 39 has been pressed':
-            LED2.freq(600)
-            LED2.duty_u16(10000)
+        if msg == f"Room {secrets.ROOM_NUMBER}-3 has been pressed":
+            pixels.set_pixel_line(1, 1, orange)
+            pixels.show()
             buzzer.freq(300)
             buzzer.duty_u16(60000)
-            
-        elif msg == 'Room 37 has been answered':
-            LED1.duty_u16(0)
-            LED2.duty_u16(0)
+        if msg == f"Room {secrets.ROOM_NUMBER}-4 has been pressed":
+            pixels.set_pixel_line(1, 1, orange)
+            pixels.show()
+            buzzer.freq(300)
+            buzzer.duty_u16(60000)
+        if msg == "Bathroom has been pressed":
+            pixels.set_pixel_line(0, 3, red)
+            pixels.show()
+            buzzer.freq(300)
+            buzzer.duty_u16(60000)
+        if msg == 'Room 03 reset':
+            machine.reset()
+        if msg == 'Room 03 Update':
+            ota_updater.update_and_install()
+        if msg == "Room has been answered":
+            pixels.clear()
+            pixels.show()
             buzzer.duty_u16(0)
             await asyncio.sleep_ms(10)
-            
+           
 async def down(client):
     global outages
     while True:
-        await client.down.wait()  # Pause until connectivity changes
+        await client.down.wait()
         client.down.clear()
-        wifi_led(False)
         outages += 1
-        print('WiFi or broker is down.')
 
 async def up(client):
     while True:
         await client.up.wait()
         client.up.clear()
-        wifi_led(True)
-        print('We are connected to broker.')
-        await client.subscribe('Room 37', 1)
-
+        print(wlan.ifconfig())
+        mac_addess = wlan.config('mac')
+        for digit in range(0,5):
+            print(str(hex(mac_addess[digit]))[2:4], ':', sep='', end = '')
+        print(str(hex(mac_addess[5]))[2:4] )
+        await client.subscribe(f'Room {secrets.ROOM_NUMBER}', 1)
+       
+async def room_status():
+    while True:
+        await asyncio.sleep_ms(20)
+        await client.publish(f"Room {secrets.ROOM_NUMBER}", f"Room {secrets.ROOM_NUMBER} connected!", qos = 1)
+        await client.publish(f'Room {secrets.ROOM_NUMBER}', str(wlan.ifconfig()), qos = 1)
+        await asyncio.sleep(480)
+       
 async def main(client):
+    asyncio.create_task(button_handler("1", bed1_btn, bed1_prev_state, yellow))
+
+    asyncio.create_task(button_handler("2", bed2_btn, bed2_prev_state, orange))
+       
+    asyncio.create_task(button_handler("Bathroom 1 & Bathroom 2", bth_btn, bth_prev_state, red))
+
+    if secrets.NUMBER_OF_BEDS > 2:
+        asyncio.create_task(button_handler("3", bed3_btn, bed3_prev_state, green))
+       
+        asyncio.create_task(button_handler("4", bed4_btn, bed4_prev_state, blue))
+   
+    asyncio.create_task(off_handler(off_btn, off_prev_state))
+    # asyncio.create_task(off_pb_handler())
+    asyncio.create_task(room_status())
+   
     try:
         await client.connect()
     except OSError:
         print('Connection failed.')
-    
+   
     for task in (up, down, messages):
         asyncio.create_task(task(client))
-        
-    n = 0
-    
+       
     while True:
-        
-        await bed1_handler()
-        await bed2_handler()
-        await bth_handler()
-        await off_handler()
         await asyncio.sleep_ms(10)
 
-# Define configuration
-config['will'] = (TOPIC, 'Room 37 connected!', False, 0)
-config['keepalive'] = 120
-config["queue_len"] = 1  # Use event interface with default queue
-
 # Set up client. Enable optional debug statements.
-MQTTClient.DEBUG = True
+
 client = MQTTClient(config)
 
 try:
     asyncio.run(main(client))
 finally:  # Prevent LmacRxBlk:1 errors.
     client.close()
-    blue_led(True)
     asyncio.new_event_loop()
+
