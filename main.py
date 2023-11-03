@@ -15,8 +15,7 @@ gc.collect()
 
 ota_updater = OTAUpdater(secrets.FIRMWARE_URL, "main.py")
 
-numpix = 4
-pixels = Neopixel(numpix, 0, 0, "GRB")
+pixels = Neopixel(4, 0, 0, "GRB")
  
 yellow = (255, 100, 0)
 orange = (255, 50, 0)
