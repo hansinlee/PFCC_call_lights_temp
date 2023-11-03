@@ -208,21 +208,21 @@ async def room_status():
     await asyncio.sleep(480)
        
 async def main(client):
-    asyncio.create_task(button_handler("1", bed1_btn, bed1_prev_state, yellow))
+    asyncio.create_task(button_handler("1", bed1_btn, bed1_prev_state))
 
-    asyncio.create_task(button_handler("2", bed2_btn, bed2_prev_state, orange))
+    asyncio.create_task(button_handler("2", bed2_btn, bed2_prev_state))
        
-    asyncio.create_task(button_handler(secrets.BATHROOM, bth_btn, bth_prev_state, red))
+    asyncio.create_task(button_handler(secrets.BATHROOM, bth_btn, bth_prev_state))
 
     if secrets.NUMBER_OF_BEDS > 2:
-        asyncio.create_task(button_handler("3", bed3_btn, bed3_prev_state, green))
+        asyncio.create_task(button_handler("3", bed3_btn, bed3_prev_state))
        
-        asyncio.create_task(button_handler("4", bed4_btn, bed4_prev_state, blue))
+        asyncio.create_task(button_handler("4", bed4_btn, bed4_prev_state))
    
     asyncio.create_task(off_handler(off_btn, off_prev_state))
 
     asyncio.create_task(room_status())
-   
+    
     try:
         await client.connect()
     except OSError:
@@ -234,13 +234,8 @@ async def main(client):
     while True:
         await asyncio.sleep_ms(10)
 
-# Set up client. Enable optional debug statements.
-
-client = MQTTClient(config)
-
 try:
     asyncio.run(main(client))
 finally:  # Prevent LmacRxBlk:1 errors.
     client.close()
     asyncio.new_event_loop()
-
