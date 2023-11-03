@@ -44,6 +44,10 @@ off_prev_state = off_btn.value()
 # Network
 wlan = network.WLAN(network.STA_IF)
 wlan_ip = wlan.ifconfig()
+
+# MQTT Client
+client = MQTTClient(config)
+
 # Button Handlers
 async def button_handler(number, button, previous_state, pixel_color):
     while True:
