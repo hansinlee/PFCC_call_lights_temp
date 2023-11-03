@@ -49,63 +49,71 @@ wlan_ip = wlan.ifconfig()
 client = MQTTClient(config)
 
 # Button Handlers
-async def button_handler(number, button, previous_state, pixel_color):
+
+async def publish_mqtt_if_connected(status, bed=None):
+    if client._has_connected:
+        if status == "on":
+            if bed == {secrets.BATHROOM}:
+                print(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed')
+                await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos = 1)
+            else:
+                print(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed')
+                await client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos = 1)
+        elif status == 'off':
+            print(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered')
+            await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos = 1)   
+
+def button_pressed(bed):
+    if bed == "1":
+        pixels.set_pixel_line(0, 0, yellow)
+    elif bed == "2":
+        pixels.set_pixel_line(1, 1, orange)
+    elif bed == "3":
+        pixels.set_pixel_line(2, 2, green)
+    elif bed == "4":
+        pixels.set_pixel_line(3, 3, blue)
+    elif bed == {secrets.BATHROOM}:
+        pixels.set_pixel_line(0, 3, red)
+    pixels.show()
+    buzzer.freq(300)
+    buzzer.duty_u16(60000)
+            
+
+async def button_handler(bed, button, previous_state):
     while True:
         await asyncio.sleep_ms(10)
         if button.value() and not previous_state:
             utime.sleep_ms(250)
             if button.value() and not previous_state:
                 previous_state = True
-                if number == "1":
-                    pixels.set_pixel_line(0, 0, pixel_color)
-                    if client._has_connected:
-                        print(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed')
-                        await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed', qos = 1) 
-                elif number == "2":
-                    pixels.set_pixel_line(1, 1, pixel_color)
-                    if client._has_connected:
-                        print(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed')
-                        await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed', qos = 1)
-                elif number == secrets.BATHROOM:
-                    pixels.set_pixel_line(0, 3, pixel_color)
-                    if client._has_connected:
-                        await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos = 1)
-                if secrets.NUMBER_OF_BEDS > 2:
-                    if number == "3":
-                        pixels.set_pixel_line(2, 2, pixel_color)
-                        if client._has_connected:
-                            print(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed')
-                            await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed', qos = 1)
-                    elif number == "4":
-                        pixels.set_pixel_line(3, 3, pixel_color)
-                        if client._has_connected:
-                            print(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed')
-                            await client.publish(f'{secrets.ROOM_NUMBER}-{number}', f'Room {secrets.ROOM_NUMBER}-{number} has been pressed', qos = 1)
-                pixels.show()
-                buzzer.freq(300)
-                buzzer.duty_u16(60000)
-                print(f"{number} has been pressed")
+                button_pressed(bed)
+                await publish_mqtt_if_connected("on", bed)
         elif not button.value() and previous_state:
             previous_state = False
         await asyncio.sleep_ms(10)
 
-def check_if_still_pressed(number, previous_state):
+def keep_on_if_still_pressed(bed, previous_state):
     if previous_state == True:
-        if number == "1":
+        if bed == "1":
             pixels.set_pixel_line(0, 0, yellow)
-        elif number == "2":
+        elif bed == "2":
             pixels.set_pixel_line(1, 1, orange)
-        elif number == {secrets.BATHROOM}:
-            pixels.set_pixel_line(0, 3, red)
-        elif number == "3":
+        elif bed == "3":
             pixels.set_pixel_line(2, 2, green)
-        elif number == "4":
+        elif bed == "4":
             pixels.set_pixel_line(3, 3, blue)
+        elif bed == secrets.BATHROOM:
+            pixels.set_pixel_line(0, 3, red)
         pixels.show()
         buzzer.freq(300)
         buzzer.duty_u16(60000)
- 
+        print(f"{bed} is held pressed")
 
+def turn_off():
+    pixels.clear()
+    pixels.show()
+    buzzer.duty_u16(0)
+    print('lights and buzzer triggered off')
 
 async def off_handler(button, previous_state):
     while True:
@@ -114,18 +122,16 @@ async def off_handler(button, previous_state):
             utime.sleep_ms(250)
             if button.value() and not previous_state:
                 previous_state = True
-                pixels.clear()
-                pixels.show()
-                print('pixels.clear')
-                buzzer.duty_u16(0)
-                check_if_still_pressed("1", bed1_btn.value())
-                check_if_still_pressed("2", bed2_btn.value())
-                check_if_still_pressed({secrets.BATHROOM}, bth_btn.value())
-                if client._has_connected:
-                    await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos = 1)
+                turn_off()
+                keep_on_if_still_pressed("1", bed1_btn.value())
+                keep_on_if_still_pressed("2", bed2_btn.value())
+                keep_on_if_still_pressed(secrets.BATHROOM, bth_btn.value())
                 if secrets.NUMBER_OF_BEDS > 2:
-                    check_if_still_pressed("3", bed3_btn.value())
-                    check_if_still_pressed("4", bed4_btn.value())
+                    keep_on_if_still_pressed("3", bed3_btn.value())
+                    keep_on_if_still_pressed("4", bed4_btn.value())
+                await publish_mqtt_if_connected("off")
+#                 if client._has_connected:
+#                     await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos = 1)
         elif not button.value() and previous_state:
             previous_state = False
         await asyncio.sleep_ms(10)
@@ -199,7 +205,7 @@ async def room_status():
 
     while True:
         await client.publish(f'Room {secrets.ROOM_NUMBER} IP', str(wlan.ifconfig()), qos = 1)
-        await asyncio.sleep(480)
+    await asyncio.sleep(480)
        
 async def main(client):
     asyncio.create_task(button_handler("1", bed1_btn, bed1_prev_state, yellow))
