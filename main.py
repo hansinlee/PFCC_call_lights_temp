@@ -94,7 +94,7 @@ async def button_handler(bed, button, previous_state):
     while True:
         await asyncio.sleep(0)
         if not button.value() and not previous_state:
-            utime.sleep_ms(250)
+            utime.sleep_ms(450)
             if not button.value() and not previous_state:
                 previous_state = True
                 await button_pressed(bed)
@@ -133,7 +133,7 @@ async def off_handler(button, previous_state):
     global outages
     while True:
         if not button.value() and not previous_state:
-            utime.sleep_ms(250)
+            utime.sleep_ms(450)
             if not button.value() and not previous_state:
                 previous_state = True
                 await turn_off()
