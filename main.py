@@ -9,7 +9,8 @@ import network
 from ota import OTAUpdater
 import gc
 import secrets
-
+from json import dumps as json_encode, loads as json_decode
+import uasync_requests as urequest
 
 gc.collect()
 
@@ -57,36 +58,85 @@ async def led_flash():
         onboard_led.toggle()
         await asyncio.sleep(1)
 
+class remote_client:
+    remote_url=secrets.REMOTE_URL
+    cron=[]
+    dst_update=0
+class logging:
+	pending_post=[]
+	http_errors=[]
+	class clock:
+		time_delta=0 # This is used as a backup method of setting the clock
+		method="unset"
+#END logging
+
+def post(json,comment=""):
+    global outages
+    if outages == 0:
+        async def send(json,comment):
+            # This is deferred till next sleep period
+            if not json:
+                json=json_encode(logging.pending_post)
+                logging.pending_post=[]
+            r=await urequest.post(secrets.REMOTE_URL,data=json,headers={"Content-type":"application/json"})
+            if r.status_code != 200:
+                print("------ERROR------")
+                logging.http_errors.append({
+                    "error":r.status_code,
+                    "message":r.content,
+                    "data":json
+                })
+                if len(logging.http_errors) > 4:
+                    logging.http_errors.pop(0)
+            print(comment,r.status_code,"-", r.content)
+            r.close()
+        if not isinstance(json, str):# comment == "appendLog:"
+            logging.pending_post.append(json)
+            if len(logging.pending_post) > 1:
+                return
+            json=False
+        asyncio.create_task(send(json,comment))
+    #END post()
+
 async def publish_mqtt_if_connected(status, bed=None):
     global outages
     await asyncio.sleep(0)
     if outages == 0:
         if status == "on":
+            post(f"MQTT {status}: Bed {bed} Room {secrets.ROOM_NUMBER}")
             if bed == secrets.BATHROOM:
-                print(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed')
                 await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos = 1)
             else:
-                print(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed')
                 await client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos = 1)
         elif status == 'off':
-            print(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered')
             await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos = 1)
 
 async def button_pressed(bed):
     global outages
     if bed == "1":
         pixels.set_pixel_line(0, 0, orange)
+        post(f"{bed} has been pressed")
+        await asyncio.sleep(0)
     elif bed == "2":
         pixels.set_pixel_line(1, 1, magenta)
+        post(f"{bed} has been pressed")
+        await asyncio.sleep(0)
     elif bed == "3":
         pixels.set_pixel_line(2, 2, blue)
+        post(f"{bed} has been pressed")
+        await asyncio.sleep(0)
     elif bed == "4":
         pixels.set_pixel_line(3, 3, green)
+        post(f"{bed} has been pressed")
+        await asyncio.sleep(0)
     elif bed == secrets.BATHROOM:
         pixels.set_pixel_line(0, 3, red)
+        post(f"{secrets.BATHROOM} has been pressed")
+        await asyncio.sleep(0)
     pixels.show()
     buzzer.freq(buzz_freq)
     buzzer.duty_u16(buzz_duty)
+    post("Buzzer is on")
     await asyncio.sleep(0)
 
 async def button_handler(bed, button, previous_state):
@@ -94,14 +144,18 @@ async def button_handler(bed, button, previous_state):
     while True:
         await asyncio.sleep(0)
         if not button.value() and not previous_state:
-            utime.sleep_ms(450)
+            utime.sleep_ms(325)
+            post(f'{bed} has been pressed pre debounce')
             if not button.value() and not previous_state:
                 previous_state = True
+                post(f"{bed}-{button.value()}-{previous_state}")
                 await button_pressed(bed)
+                post(f'{bed} has been pressed post debounce')
                 if outages == 0:
                     await publish_mqtt_if_connected("on", bed)
         elif button.value() and previous_state:
             previous_state = False
+            post(f'{bed} has been released')
             await asyncio.sleep(0)
         await asyncio.sleep_ms(0)
 
@@ -120,6 +174,7 @@ async def keep_on_if_still_pressed(bed, prev):
         pixels.show()
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
+        post(f'Bed: {bed} is still pressed. Previous state: {prev}')
         await asyncio.sleep(0)
 
 async def turn_off():
@@ -127,15 +182,18 @@ async def turn_off():
     pixels.show()
     buzzer.duty_u16(0)
     print('lights and buzzer triggered off')
+    post('buzzer & lights are off')
     await asyncio.sleep(0)
 
 async def off_handler(button, previous_state):
     global outages
     while True:
         if not button.value() and not previous_state:
-            utime.sleep_ms(450)
+            utime.sleep_ms(325)
+            post(f'Off button has been pressed pre debounce')
             if not button.value() and not previous_state:
                 previous_state = True
+                post(f'Off button has been pressed post debounce')
                 await turn_off()
                 await keep_on_if_still_pressed("1", bed1_btn.value())
                 await keep_on_if_still_pressed("2", bed2_btn.value())
@@ -197,7 +255,7 @@ async def down(client):
     while True:
         await client.down.wait()
         client.down.clear()
-        print('Wifi or Broker is down')
+        post('Wifi or Broker is down')
         outages = 1
         await asyncio.sleep(0)
 
@@ -239,6 +297,7 @@ async def main(client):
     asyncio.create_task(off_handler(off_btn, off_prev_state))
     asyncio.create_task(room_status())
     asyncio.create_task(led_flash())
+    
     try:
         await client.connect()
     except OSError as e:
