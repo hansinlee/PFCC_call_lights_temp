@@ -9,8 +9,8 @@ import network
 from ota import OTAUpdater
 import gc
 import secrets
+import urequests
 from json import dumps as json_encode, loads as json_decode
-import uasync_requests as urequest
 
 gc.collect()
 
@@ -70,7 +70,7 @@ class logging:
 		method="unset"
 #END logging
 
-def post(json,comment=""):
+def queue(json,comment=""):
     global outages
     if outages == 0:
         async def send(json,comment):
@@ -78,7 +78,7 @@ def post(json,comment=""):
             if not json:
                 json=json_encode(logging.pending_post)
                 logging.pending_post=[]
-            r=await urequest.post(secrets.REMOTE_URL,data=json,headers={"Content-type":"application/json"})
+            r = urequests.post(secrets.REMOTE_URL,data=json,headers={"Content-type":"application/json"})
             if r.status_code != 200:
                 print("------ERROR------")
                 logging.http_errors.append({
@@ -103,7 +103,7 @@ async def publish_mqtt_if_connected(status, bed=None):
     await asyncio.sleep(0)
     if outages == 0:
         if status == "on":
-            post(f"MQTT {status}: Bed {bed} Room {secrets.ROOM_NUMBER}")
+            queue(f"MQTT {status}: Bed {bed} Room {secrets.ROOM_NUMBER}")
             if bed == secrets.BATHROOM:
                 await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos = 1)
             else:
@@ -115,28 +115,28 @@ async def button_pressed(bed):
     global outages
     if bed == "1":
         pixels.set_pixel_line(0, 0, orange)
-        post(f"{bed} has been pressed")
+        queue(f"{bed} has been pressed")
         await asyncio.sleep(0)
     elif bed == "2":
         pixels.set_pixel_line(1, 1, magenta)
-        post(f"{bed} has been pressed")
+        queue(f"{bed} has been pressed")
         await asyncio.sleep(0)
     elif bed == "3":
         pixels.set_pixel_line(2, 2, blue)
-        post(f"{bed} has been pressed")
+        queue(f"{bed} has been pressed")
         await asyncio.sleep(0)
     elif bed == "4":
         pixels.set_pixel_line(3, 3, green)
-        post(f"{bed} has been pressed")
+        queue(f"{bed} has been pressed")
         await asyncio.sleep(0)
     elif bed == secrets.BATHROOM:
         pixels.set_pixel_line(0, 3, red)
-        post(f"{secrets.BATHROOM} has been pressed")
+        queue(f"{secrets.BATHROOM} has been pressed")
         await asyncio.sleep(0)
     pixels.show()
     buzzer.freq(buzz_freq)
     buzzer.duty_u16(buzz_duty)
-    post("Buzzer is on")
+    queue("Buzzer is on")
     await asyncio.sleep(0)
 
 async def button_handler(bed, button, previous_state):
@@ -145,17 +145,16 @@ async def button_handler(bed, button, previous_state):
         await asyncio.sleep(0)
         if not button.value() and not previous_state:
             utime.sleep_ms(325)
-            post(f'{bed} has been pressed pre debounce')
+            queue(f'{bed} has been pressed pre debounce')
             if not button.value() and not previous_state:
                 previous_state = True
-                post(f"{bed}-{button.value()}-{previous_state}")
                 await button_pressed(bed)
-                post(f'{bed} has been pressed post debounce')
+                queue(f'{bed} has been pressed post debounce')
                 if outages == 0:
                     await publish_mqtt_if_connected("on", bed)
         elif button.value() and previous_state:
             previous_state = False
-            post(f'{bed} has been released')
+            queue(f'{bed} has been released')
             await asyncio.sleep(0)
         await asyncio.sleep_ms(0)
 
@@ -174,15 +173,15 @@ async def keep_on_if_still_pressed(bed, prev):
         pixels.show()
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
-        post(f'Bed: {bed} is still pressed. Previous state: {prev}')
+        queue(f'Bed: {bed} is still pressed. Previous state: {prev}')
         await asyncio.sleep(0)
 
 async def turn_off():
     pixels.clear()
     pixels.show()
     buzzer.duty_u16(0)
-    print('lights and buzzer triggered off')
-    post('buzzer & lights are off')
+    queue('lights and buzzer triggered off')
+    queue('buzzer & lights are off')
     await asyncio.sleep(0)
 
 async def off_handler(button, previous_state):
@@ -190,10 +189,10 @@ async def off_handler(button, previous_state):
     while True:
         if not button.value() and not previous_state:
             utime.sleep_ms(325)
-            post(f'Off button has been pressed pre debounce')
+            queue(f'Off button has been pressed pre debounce')
             if not button.value() and not previous_state:
                 previous_state = True
-                post(f'Off button has been pressed post debounce')
+                queue(f'Off button has been pressed post debounce')
                 await turn_off()
                 await keep_on_if_still_pressed("1", bed1_btn.value())
                 await keep_on_if_still_pressed("2", bed2_btn.value())
@@ -210,9 +209,9 @@ async def off_handler(button, previous_state):
 async def messages(client):
     global outages
     async for topic, msg, retained in client.queue:
-        print(f'Topic: "{topic.decode()}" Message: "{msg.decode()}" Retained: {retained}')
+        queue(f'Topic: "{topic.decode()}" Message: "{msg.decode()}" Retained: {retained}')
         msg = msg.decode('utf-8')
-        print(msg)
+        queue(msg)
         if msg == f"Room {secrets.ROOM_NUMBER}-1 has been pressed":
             pixels.set_pixel_line(0, 0, orange)
             pixels.show()
@@ -255,7 +254,7 @@ async def down(client):
     while True:
         await client.down.wait()
         client.down.clear()
-        post('Wifi or Broker is down')
+        queue('Wifi or Broker is down')
         outages = 1
         await asyncio.sleep(0)
 
@@ -264,7 +263,7 @@ async def up(client):
     while True:
         await client.up.wait()
         client.up.clear()
-        print(wlan.ifconfig())
+        queue(wlan.ifconfig())
         outages = 0
         await asyncio.sleep_ms(2)
         await client.subscribe(f'Room {secrets.ROOM_NUMBER}', 0)
@@ -301,7 +300,7 @@ async def main(client):
     try:
         await client.connect()
     except OSError as e:
-        print("Connection Failed! OSError:", e)
+        queue("Connection Failed! OSError:", e)
         await watchdog_timer(300)
         return
     for task in (up, down, messages):
