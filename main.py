@@ -9,6 +9,8 @@ import network
 from ota import OTAUpdater
 import gc
 import secrets
+from json import dumps as json_encode, loads as json_decode
+import urequests as requests
 
 
 gc.collect()
@@ -52,10 +54,60 @@ buzz_duty = 10000
 
 onboard_led = Pin('LED', Pin.OUT)
 
+class logging:
+    pending_post=[]
+    http_errors=[]
+
+def queue(json,comment=""):
+    global outages
+    if outages == 0:
+        async def send(json,comment):
+            # This is deferred till next sleep period
+            if not json:
+                json=json_encode(logging.pending_post)
+                logging.pending_post=[]
+            r = requests.post(secrets.REMOTE_URL,data=json,headers={"Content-type":"application/json"})
+            if r.status_code != 200:
+                print("------ERROR------")
+                logging.http_errors.append({
+                    "error":r.status_code,
+                    "message":r.content,
+                    "data":json
+                })
+                if len(logging.http_errors) > 4:
+                    logging.http_errors.pop(0)
+            print(comment,r.status_code,"-", r.content)
+            r.close()
+        if not isinstance(json, str):# comment == "appendLog:"
+            logging.pending_post.append(json)
+            if len(logging.pending_post) > 1:
+                return
+            json=False
+        asyncio.create_task(send(json,comment))
+    #END post()
+
+# async def send_requests(queue_data):
+#     url = secrets.REMOTE_URL
+#     headers = {'Content-Type': 'application/json'}
+#     try:
+
+#         r = await requests.post(url, json=queue_data, headers=headers)
+
+#         if r.status_code == 200:
+#             response_data = r.json()
+#             print(response_data)
+#         else:
+#             print(f"Error: {r.status_code}")
+
+#         r.close()
+#     except OSError as e:
+#         print(f'Error: {r.status_code}')
+#     await asyncio.sleep_ms(250)
+
 class Connection:
     def __init__(self):
         self.status = 'down'
-    def connection_status(self, current_status):
+    def main_conn_status(self, current_status):
         if current_status in ('up', 'down'):
             self.status = current_status
             return True
@@ -68,7 +120,7 @@ class Connection:
             await client.down.wait()
             client.down.clear()
             print('Wifi or Broker is down')
-            self.connection_status('down')
+            self.main_conn_status('down')
             print(self.status)
             await asyncio.sleep(0)
 
@@ -77,7 +129,7 @@ class Connection:
             await client.up.wait()
             client.up.clear()
             print(wlan.ifconfig())
-            self.connection_status('up')
+            self.main_conn_status('up')
             print(self.status)
             await asyncio.sleep_ms(2)
             await client.subscribe(f'Room {secrets.ROOM_NUMBER}', 0)
@@ -136,17 +188,133 @@ class Connection:
         buzzer.duty_u16(0)
 con_status = Connection()
 test_status = con_status.status
+print(test_status)
 
+# class ButtonController:
+#     def __init__(self):
+#         self.status = 'off'
+#     def button_status(self, current_status):
+#         if current_status in ('on', 'off'):
+#             self.status = current_status
+#             return True
+#         else:
+#             return False
+        
+#     async def button_handler(self, bed, button, previous_state):
+#         while True:
+#             await asyncio.sleep(0)
+#             if not button.value() and not previous_state:
+#                 utime.sleep_ms(250)
+#                 if not button.value() and not previous_state:
+#                     previous_state = True
+#                     print("testing2")
+#                     await self.button_pressed(bed)
+#                     print(con_status.status)
+#                     if con_status.status == 'up':
+#                         print("it's on")
+#                         await publish_mqtt_if_connected("on", bed)
+#             elif button.value() and previous_state:
+#                 previous_state = False
+#                 await asyncio.sleep(0)
+#             await asyncio.sleep_ms(0)
+
+#     async def button_pressed(self, bed):
+#         if bed == "1":
+#             pixels.set_pixel_line(0, 0, orange)
+#             print(con_status.status)
+#         elif bed == "2":
+#             pixels.set_pixel_line(1, 1, magenta)
+#         elif bed == "3":
+#             pixels.set_pixel_line(2, 2, blue)
+#         elif bed == "4":
+#             pixels.set_pixel_line(3, 3, green)
+#         elif bed == secrets.BATHROOM:
+#             pixels.set_pixel_line(0, 3, red)
+#         pixels.show()
+#         buzzer.freq(buzz_freq)
+#         buzzer.duty_u16(buzz_duty)
+#         self.button_status('on')
+#         print(self.status)
+#         await asyncio.sleep(0)
+
+#     async def keep_on_if_still_pressed(self, bed, prev):
+#         if prev == False:
+#             if bed == "1":
+#                 pixels.set_pixel_line(0, 0, orange)
+#             elif bed == "2":
+#                 pixels.set_pixel_line(1, 1, magenta)
+#             elif bed == "3":
+#                 pixels.set_pixel_line(2, 2, blue)
+#             elif bed == "4":
+#                 pixels.set_pixel_line(3, 3, green)
+#             elif bed == secrets.BATHROOM:
+#                 pixels.set_pixel_line(0, 3, red)
+#             pixels.show()
+#             buzzer.freq(buzz_freq)
+#             buzzer.duty_u16(buzz_duty)
+#             await asyncio.sleep(0)
+
+#     async def off_handler(self, button, previous_state):
+#         while True:
+#             if not button.value() and not previous_state:
+#                 utime.sleep_ms(250)
+#                 if not button.value() and not previous_state:
+#                     previous_state = True
+#                     await self.turn_off()
+#                     await self.keep_on_if_still_pressed("1", bed1_btn.value())
+#                     await self.keep_on_if_still_pressed("2", bed2_btn.value())
+#                     await self.keep_on_if_still_pressed(secrets.BATHROOM, bth_btn.value())
+#                     if secrets.NUMBER_OF_BEDS > 2:
+#                         await self.keep_on_if_still_pressed("3", bed3_btn.value())
+#                         await self.keep_on_if_still_pressed("4", bed4_btn.value())
+#                     if con_status.status == 'up':
+#                         await publish_mqtt_if_connected("off")
+#                         print("test")
+#             elif button.value() and previous_state:
+#                 previous_state = False
+#             await asyncio.sleep_ms(0)
+
+#     async def turn_off(self):
+#         pixels.clear()
+#         pixels.show()
+#         buzzer.duty_u16(0)
+#         self.button_status('off')
+#         print(self.status)
+#         await asyncio.sleep(0)
 class ButtonController:
     def __init__(self):
-        self.status = 'off'
-    def on_status(self, current_status):
-        if current_status in ('on', 'off'):
-            self.status = current_status
+        self.status = {'1': 'off', '2': 'off', '3': 'off', '4': 'off', 'bathroom': 'off'}
+    
+    def get_button_status(self, bed):
+        return self.status.get(bed, 'off')
+
+    def button_status(self, bed, current_status):
+        if bed in self.status and current_status in ('on', 'off'):
+            self.status[bed] = current_status
             return True
         else:
             return False
+
+    async def button_handler(self, bed, button, previous_state):
+        while True:
+            await asyncio.sleep(0)
+            if not button.value() and not previous_state:
+                utime.sleep_ms(250)
+                if not button.value() and not previous_state:
+                    previous_state = True
+                    print("testing1")
+                    await self.button_pressed(bed)
+                    self.button_status(bed, 'on')
+                    print(self.status[bed])
+                    if self.status[bed] == 'on':
+                        print(f"Bed {bed} is on")
+            elif button.value() and previous_state:
+                previous_state = False
+                await asyncio.sleep(0)
+            await asyncio.sleep_ms(0)
+
     async def button_pressed(self, bed):
+        await asyncio.sleep_ms(250)
         if bed == "1":
             pixels.set_pixel_line(0, 0, orange)
         elif bed == "2":
@@ -160,19 +328,72 @@ class ButtonController:
         pixels.show()
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
-        self.on_status('on')
-        print(self.status)
+        # self.button_status(bed, 'on')
         await asyncio.sleep(0)
 
-    async def turn_off(self):
+    async def keep_on_if_still_pressed(self, bed, prev):
+        if prev == False:
+            pixels.clear()
+            if bed == "1":
+                pixels.set_pixel_line(0, 0, orange)
+            elif bed == "2":
+                pixels.set_pixel_line(1, 1, magenta)
+            elif bed == "3":
+                pixels.set_pixel_line(2, 2, blue)
+            elif bed == "4":
+                pixels.set_pixel_line(3, 3, green)
+            elif bed == secrets.BATHROOM:
+                pixels.set_pixel_line(0, 3, red)
+            pixels.show()
+            buzzer.freq(buzz_freq)
+            buzzer.duty_u16(buzz_duty)
+            await asyncio.sleep(0)
+
+    async def off_handler(self, button, previous_state):
+        while True:
+            if not button.value() and not previous_state:
+                utime.sleep_ms(250)
+                if not button.value() and not previous_state:
+                    previous_state = True
+                    await self.turn_off_all_beds()
+            elif button.value() and previous_state:
+                previous_state = False
+            await asyncio.sleep_ms(0)
+
+    async def turn_off_all_beds(self):
         pixels.clear()
         pixels.show()
         buzzer.duty_u16(0)
-        self.on_status('off')
-        print(self.status)
+        for bed in self.status:
+            self.button_status(bed, 'off')
         await asyncio.sleep(0)
 
-button_controller = ButtonController()
+b_control = ButtonController()
+
+
+async def test_values():
+    beds_to_check = ['off', '1', '2', '3', '4', 'bathroom']
+    previous_statuses = {bed: None for bed in beds_to_check}  # type: dict[str, Optional[str]]
+
+    while True:
+        if con_status.status == 'on':
+            for bed_to_check in beds_to_check:
+                current_status = b_control.get_button_status(bed_to_check)
+
+                if current_status != previous_statuses[bed_to_check]:
+                    print(f"1Current status of bed {bed_to_check}: {current_status}")
+
+                    if current_status == "on":
+                        await publish_mqtt_if_connected("on", bed_to_check)
+
+                        print(f"Bed {bed_to_check} is on")
+                    elif current_status == "off":
+                        await publish_mqtt_if_connected("off", bed_to_check)
+
+                    previous_statuses[bed_to_check] = current_status
+
+            await asyncio.sleep_ms(150)
+
 
 async def led_flash():
     while True:
@@ -181,7 +402,6 @@ async def led_flash():
 
 async def publish_mqtt_if_connected(status, bed=None):
     await asyncio.sleep(0)
-    print(con_status.status)
     if con_status.status == 'up':
         try:
             if status == "on":
@@ -200,75 +420,22 @@ async def publish_mqtt_if_connected(status, bed=None):
     else:
         print(f'Outage Detected: {outages}')
 
-async def button_handler(bed, button, previous_state):
-    while True:
-        await asyncio.sleep(0)
-        if not button.value() and not previous_state:
-            utime.sleep_ms(250)
-            if not button.value() and not previous_state:
-                previous_state = True
-                await button_controller.button_pressed(bed)
-                print(con_status.status)
-                if con_status.status == 'up':
-                    print("it's on")
-                    await publish_mqtt_if_connected("on", bed)
-        elif button.value() and previous_state:
-            previous_state = False
-            await asyncio.sleep(0)
-        await asyncio.sleep_ms(0)
-
-async def keep_on_if_still_pressed(bed, prev):
-    if prev == False:
-        if bed == "1":
-            pixels.set_pixel_line(0, 0, orange)
-        elif bed == "2":
-            pixels.set_pixel_line(1, 1, magenta)
-        elif bed == "3":
-            pixels.set_pixel_line(2, 2, blue)
-        elif bed == "4":
-            pixels.set_pixel_line(3, 3, green)
-        elif bed == secrets.BATHROOM:
-            pixels.set_pixel_line(0, 3, red)
-        pixels.show()
-        buzzer.freq(buzz_freq)
-        buzzer.duty_u16(buzz_duty)
-        await asyncio.sleep(0)
-
-async def off_handler(button, previous_state):
-    while True:
-        if not button.value() and not previous_state:
-            utime.sleep_ms(250)
-            if not button.value() and not previous_state:
-                previous_state = True
-                await button_controller.turn_off()
-                await keep_on_if_still_pressed("1", bed1_btn.value())
-                await keep_on_if_still_pressed("2", bed2_btn.value())
-                await keep_on_if_still_pressed(secrets.BATHROOM, bth_btn.value())
-                if secrets.NUMBER_OF_BEDS > 2:
-                    await keep_on_if_still_pressed("3", bed3_btn.value())
-                    await keep_on_if_still_pressed("4", bed4_btn.value())
-                if con_status.status == 'up':
-                    await publish_mqtt_if_connected("off")
-                    print("test")
-        elif button.value() and previous_state:
-            previous_state = False
-        await asyncio.sleep_ms(0)
-
 async def watchdog_timer(timeout):
     while True:
         await asyncio.sleep(timeout)
         machine.WDT(timeout=8388)
     
 async def main(client):
-    asyncio.create_task(button_handler("1", bed1_btn, bed1_prev_state))
-    asyncio.create_task(button_handler("2", bed2_btn, bed2_prev_state))
-    asyncio.create_task(button_handler(secrets.BATHROOM, bth_btn, bth_prev_state))
+    asyncio.create_task(b_control.button_handler("1", bed1_btn, bed1_prev_state))
+    asyncio.create_task(b_control.button_handler("2", bed2_btn, bed2_prev_state))
+    asyncio.create_task(b_control.button_handler(secrets.BATHROOM, bth_btn, bth_prev_state))
     if secrets.NUMBER_OF_BEDS > 2:
-        asyncio.create_task(button_handler("3", bed3_btn, bed3_prev_state))
-        asyncio.create_task(button_handler("4", bed4_btn, bed4_prev_state))
-    asyncio.create_task(off_handler(off_btn, off_prev_state))
+        asyncio.create_task(b_control.button_handler("3", bed3_btn, bed3_prev_state))
+        asyncio.create_task(b_control.button_handler("4", bed4_btn, bed4_prev_state))
+    asyncio.create_task(b_control.off_handler(off_btn, off_prev_state))
     asyncio.create_task(con_status.room_status())
     asyncio.create_task(led_flash())
+    asyncio.create_task(test_values())
     try:
         await client.connect()
     except OSError as e:
