@@ -54,37 +54,37 @@ buzz_duty = 10000
 
 onboard_led = Pin('LED', Pin.OUT)
 
-class logging:
-    pending_post=[]
-    http_errors=[]
+# class logging:
+#     pending_post=[]
+#     http_errors=[]
 
-def queue(json,comment=""):
-    global outages
-    if outages == 0:
-        async def send(json,comment):
-            # This is deferred till next sleep period
-            if not json:
-                json=json_encode(logging.pending_post)
-                logging.pending_post=[]
-            r = requests.post(secrets.REMOTE_URL,data=json,headers={"Content-type":"application/json"})
-            if r.status_code != 200:
-                print("------ERROR------")
-                logging.http_errors.append({
-                    "error":r.status_code,
-                    "message":r.content,
-                    "data":json
-                })
-                if len(logging.http_errors) > 4:
-                    logging.http_errors.pop(0)
-            print(comment,r.status_code,"-", r.content)
-            r.close()
-        if not isinstance(json, str):# comment == "appendLog:"
-            logging.pending_post.append(json)
-            if len(logging.pending_post) > 1:
-                return
-            json=False
-        asyncio.create_task(send(json,comment))
-    #END post()
+# def queue(json,comment=""):
+#     global outages
+#     if outages == 0:
+#         async def send(json,comment):
+#             # This is deferred till next sleep period
+#             if not json:
+#                 json=json_encode(logging.pending_post)
+#                 logging.pending_post=[]
+#             r = requests.post(secrets.REMOTE_URL,data=json,headers={"Content-type":"application/json"})
+#             if r.status_code != 200:
+#                 print("------ERROR------")
+#                 logging.http_errors.append({
+#                     "error":r.status_code,
+#                     "message":r.content,
+#                     "data":json
+#                 })
+#                 if len(logging.http_errors) > 4:
+#                     logging.http_errors.pop(0)
+#             print(comment,r.status_code,"-", r.content)
+#             r.close()
+#         if not isinstance(json, str):# comment == "appendLog:"
+#             logging.pending_post.append(json)
+#             if len(logging.pending_post) > 1:
+#                 return
+#             json=False
+#         asyncio.create_task(send(json,comment))
+#     #END post()
 
 # async def send_requests(queue_data):
 #     url = secrets.REMOTE_URL
@@ -376,23 +376,23 @@ async def test_values():
     previous_statuses = {bed: None for bed in beds_to_check}  # type: dict[str, Optional[str]]
 
     while True:
-        if con_status.status == 'on':
-            for bed_to_check in beds_to_check:
-                current_status = b_control.get_button_status(bed_to_check)
+        for bed_to_check in beds_to_check:
+            current_status = b_control.get_button_status(bed_to_check)
 
-                if current_status != previous_statuses[bed_to_check]:
-                    print(f"1Current status of bed {bed_to_check}: {current_status}")
+            if current_status != previous_statuses[bed_to_check]:
+                print(f"3Current status of bed {bed_to_check}: {current_status}")
 
-                    if current_status == "on":
-                        await publish_mqtt_if_connected("on", bed_to_check)
-
-                        print(f"Bed {bed_to_check} is on")
-                    elif current_status == "off":
-                        await publish_mqtt_if_connected("off", bed_to_check)
+                if current_status == "on":
+                    # await publish_mqtt_if_connected("on", bed_to_check)
+                    requests.post(url = "http://192.168.0.100/pico_logs",data="testing")
+                    
+                    print(f"Bed {bed_to_check} is on")
+                elif current_status == "off":
+                    # await publish_mqtt_if_connected("off", bed_to_check)
 
                     previous_statuses[bed_to_check] = current_status
 
-            await asyncio.sleep_ms(150)
+        await asyncio.sleep_ms(150)
 
 
 async def led_flash():
