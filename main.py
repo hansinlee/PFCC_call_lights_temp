@@ -85,8 +85,7 @@ class Connection:
             await asyncio.sleep_ms(2)
             await client.subscribe(f'Room {secrets.ROOM_NUMBER}', 0)
 
-    async def room_status(self):
-        global outages
+    async def network_status(self):
         mac_reformat = ''
         mac_address = wlan.config('mac')
         for digit in range(6):
@@ -98,27 +97,6 @@ class Connection:
         while True:
             await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} Connected! Outages: {outages}', qos=0)
             await asyncio.sleep(300)
-
-    async def publish_mqtt_if_connected(self, status, bed=None):
-        await asyncio.sleep(0)
-        if self.status == 'up':
-            try:
-                if status == "on":
-                    if bed == secrets.BATHROOM:
-                        print(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed')
-                        await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos=1)
-                    else:
-                        print(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed')
-                        await client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos=1)
-                elif status == 'off':
-                    print(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered')
-                    await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos=1)
-            except Exception as e:
-                # Handle the exception here
-                print(f'Error publishing message: {e}')
-        else:
-            print(f'Outages Detected: {outages}')
-        await asyncio.sleep_ms(250)
 
     async def messages(self, client):
         async for topic, msg, retained in client.queue:
@@ -135,6 +113,8 @@ class Connection:
                 f'Room {secrets.ROOM_NUMBER} Update': lambda: self.handle_update(),
                 f"Room {secrets.ROOM_NUMBER} has been answered": lambda: self.handle_answered(),
                 f"Room {secrets.ROOM_NUMBER} Pin Status": lambda: self.return_status(),
+                f"Room {secrets.ROOM_NUMBER} debug enable": lambda: self.debug_enable(),
+                f"Room {secrets.ROOM_NUMBER} debug disable": lambda: self.debug_disable(),
             }
             if decoded_msg in action_mapping:
                 await action_mapping[decoded_msg]()
@@ -152,9 +132,9 @@ class Connection:
         print('machine.reset handler')
         machine.reset()
         await asyncio.sleep(0)
-    
+
     async def return_status(self):
-        status_bytes = str(b_control.status).encode('utf-8')
+        status_bytes = str(b.status).encode('utf-8')
         print('2Returning status')
         await client.publish(f'{secrets.ROOM_NUMBER} off status', status_bytes, qos=1)
         await asyncio.sleep(0)
@@ -169,23 +149,58 @@ class Connection:
 
     async def handle_answered(self):
         print('pixel clear handler')
-        await b_control.turn_off_all_beds()
+        await b.turn_off_all_beds()
         await asyncio.sleep(0)
-connect = Connection()
+    async def debug_enable(self): 
+        log.debugger('on')
+        print("Debug mode enabled")
+    async def debug_disable(self):
+        log.debugger('off')
+        print("Debug mode disabled")
 
-class logging:
+async def publish_mqtt_if_connected(status, bed=None):
+    await asyncio.sleep(0)
+    if c.status == 'up':
+        try:
+            if status == "on":
+                if bed == secrets.BATHROOM:
+                    print(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed')
+                    await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos=1)
+                else:
+                    print(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed')
+                    await client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos=1)
+            elif status == 'off':
+                print(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered')
+                await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos=1)
+        except Exception as e:
+            # Handle the exception here
+            print(f'Error publishing message: {e}')
+    else:
+        print(f'Outages Detected: {outages}')
+    await asyncio.sleep_ms(250)
+
+
+class Logging:
     pending_post = []
+    def __init__(self):
+        self.status = 'off'
+    def debugger(self, DEBUG_status):
+        if DEBUG_status in ("on", "off"):
+            self.status = DEBUG_status
+            return True
+        else:
+            return False
 
 def post(comment=""):
     async def send(comment):
-        if connect.status == 'up':
-            logging.pending_post = []
+        if c.status == 'up' and log.status == 'on':
+            Logging.pending_post = []
             await client.publish(f"Room {secrets.ROOM_NUMBER} Logs", comment, qos=0)
             print(comment)
         
             print("1RAM free %d alloc %d" % (gc.mem_free(), gc.mem_alloc()))
-            logging.pending_post.append(comment)
-            if len(logging.pending_post) > 1:
+            Logging.pending_post.append(comment)
+            if len(Logging.pending_post) > 1:
                 return
         else:
             gc.collect()
@@ -219,7 +234,6 @@ class ButtonController:
                     previous_state = True
                     await self.button_pressed(bed)
                     self.button_status(bed, 'on')
-                    print(self.status[bed])
                     print("RAM free %d alloc %d" % (gc.mem_free(), gc.mem_alloc()))
                     if bed != secrets.BATHROOM:
                         post(f"{secrets.ROOM_NUMBER}-{bed} post-debounce triggered")
@@ -251,7 +265,6 @@ class ButtonController:
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
         post(f'{secrets.ROOM_NUMBER}-{bed} buzzer and light are on')
-        # self.button_status(bed, 'on')
         await asyncio.sleep(0)
 
     async def button_pressed(self, bed):
@@ -261,12 +274,6 @@ class ButtonController:
         if prev == False:
             await self.pixel_buzzer_on(bed)
             post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed')
-
-    async def start_timer(self, duration, bed):
-        await asyncio.sleep(duration)
-        # Check if the button is still off after the timer duration
-        if self.get_button_status(bed) == 'on':
-            print(f"Button for Bed {bed} was off for less than {duration} seconds")
 
     async def off_handler(self, button, previous_state):
         while True:
@@ -297,8 +304,6 @@ class ButtonController:
             self.button_status(bed, 'off')
         await asyncio.sleep(0)
 
-b_control = ButtonController()
-
 async def test_values():
     beds_to_check = ['off', '1', '2', '3', '4', secrets.BATHROOM]
     previous_statuses = {bed: None for bed in beds_to_check}  # type: dict[str, Optional[str]]
@@ -306,15 +311,15 @@ async def test_values():
 
     while True:
         for bed_to_check in beds_to_check:
-            current_status = b_control.get_button_status(bed_to_check)
+            current_status = b.get_button_status(bed_to_check)
 
             if current_status != previous_statuses[bed_to_check]:
 
                 if current_status == "on" and not mqtt_sent_flags[bed_to_check]:
-                    await connect.publish_mqtt_if_connected("on", bed_to_check)
+                    await publish_mqtt_if_connected("on", bed_to_check)
                     mqtt_sent_flags[bed_to_check] = True
                 elif current_status == "off" and mqtt_sent_flags[bed_to_check]:
-                    await connect.publish_mqtt_if_connected("off")
+                    await publish_mqtt_if_connected("off")
                     mqtt_sent_flags[bed_to_check] = False  # Reset the flag when status is "off"
                 previous_statuses[bed_to_check] = current_status
         await asyncio.sleep_ms(150)
@@ -330,15 +335,16 @@ async def watchdog_timer(timeout):
         machine.WDT(timeout=8388)
         await asyncio.sleep_ms(250)
 
+
 async def main(client):
-    asyncio.create_task(b_control.button_handler("1", bed1_btn, bed1_prev_state))
-    asyncio.create_task(b_control.button_handler("2", bed2_btn, bed2_prev_state))
-    asyncio.create_task(b_control.button_handler(secrets.BATHROOM, bth_btn, bth_prev_state))
+    asyncio.create_task(b.button_handler("1", bed1_btn, bed1_prev_state))
+    asyncio.create_task(b.button_handler("2", bed2_btn, bed2_prev_state))
+    asyncio.create_task(b.button_handler(secrets.BATHROOM, bth_btn, bth_prev_state))
     if secrets.NUMBER_OF_BEDS > 2:
-        asyncio.create_task(b_control.button_handler("3", bed3_btn, bed3_prev_state))
-        asyncio.create_task(b_control.button_handler("4", bed4_btn, bed4_prev_state))
-    asyncio.create_task(b_control.off_handler(off_btn, off_prev_state))
-    asyncio.create_task(connect.room_status())
+        asyncio.create_task(b.button_handler("3", bed3_btn, bed3_prev_state))
+        asyncio.create_task(b.button_handler("4", bed4_btn, bed4_prev_state))
+    asyncio.create_task(b.off_handler(off_btn, off_prev_state))
+    asyncio.create_task(c.network_status())
     asyncio.create_task(led_flash())
     asyncio.create_task(test_values())
     try:
@@ -347,7 +353,7 @@ async def main(client):
         print("Connection Failed! OSError:", e)
         await watchdog_timer(300) # Shutoff timer when OSError is returned.
         return
-    for task in (connect.up, connect.down, connect.messages):
+    for task in (c.up, c.down, c.messages):
         asyncio.create_task(task(client))
     while True:
         await asyncio.sleep_ms(250)
@@ -355,7 +361,9 @@ async def main(client):
 # Set up client. Enable optional debug statements.
 MQTTClient.DEBUG = True
 client = MQTTClient(config)
-
+c = Connection()
+b = ButtonController()
+log = Logging()
 try:
     asyncio.run(main(client))
 finally:  # Prevent LmacRxBlk:1 errors.
