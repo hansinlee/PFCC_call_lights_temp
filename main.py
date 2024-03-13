@@ -3,7 +3,6 @@ utime.sleep_ms(250)
 
 from mqtt_as import MQTTClient, config
 import uasyncio as asyncio
-from asyncio import Event
 from machine import Pin, PWM, WDT
 from neopixel import Neopixel
 import network
@@ -11,8 +10,6 @@ from ota import OTAUpdater
 import gc
 import secrets
 from json import dumps as json_encode, loads as json_decode
-
-
 
 gc.collect()
 
@@ -100,7 +97,7 @@ class Connection:
         await client.publish(f'Room {secrets.ROOM_NUMBER} IP', str(wlan.ifconfig()), qos = 1)
         while True:
             await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} Connected! Outages: {outages}', qos=0)
-            await asyncio.sleep(30)
+            await asyncio.sleep(300)
 
     async def publish_mqtt_if_connected(self, status, bed=None):
         await asyncio.sleep(0)
@@ -126,7 +123,7 @@ class Connection:
     async def messages(self, client):
         async for topic, msg, retained in client.queue:
             decoded_msg = msg.decode('utf-8')
-            print(f'{b_control.status} 5Topic: "{topic.decode()}" Message: "{decoded_msg}" Retained: {retained}')
+            print(f'Topic: "{topic.decode()}" Message: "{decoded_msg}" Retained: {retained}')
 
             action_mapping = {
                 f"Room {secrets.ROOM_NUMBER}-1 has been pressed": lambda: self.handle_room_pressed(0, 0, orange),
