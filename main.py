@@ -9,7 +9,9 @@ import network
 from ota import OTAUpdater
 import gc
 import secrets
-from json import dumps as json_encode, loads as json_decode
+import uos
+
+
 
 gc.collect()
 
@@ -69,7 +71,7 @@ class Connection:
         while True:
             await client.down.wait()
             client.down.clear()
-            post('Wifi or Broker is down')
+            await log.post('Wifi or Broker is down')
             self.main_conn_status('down')
             outages += 1
             print(self.status)
@@ -81,7 +83,7 @@ class Connection:
             client.up.clear()
             print(wlan.ifconfig())
             self.main_conn_status('up')
-            (self.status)
+            # await log.on_connect()
             await asyncio.sleep_ms(2)
             await client.subscribe(f'Room {secrets.ROOM_NUMBER}', 0)
 
@@ -144,7 +146,7 @@ class Connection:
         print('OTA handler')
         if self.status == 'up':
             await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} has been updated! Please reset device.')
-            post(f"Room {secrets.ROOM_NUMBER} has been successfully updated")
+            await log.post(f"Room {secrets.ROOM_NUMBER} has been successfully updated")
             await asyncio.sleep(0)
 
     async def handle_answered(self):
@@ -153,9 +155,26 @@ class Connection:
         await asyncio.sleep(0)
     async def debug_enable(self): 
         log.debugger('on')
+        file_path = 'debug.txt'
+        try:
+            with open(file_path, 'w') as file:
+                file.write('debug = on\n')
+            print(f'Successfully updated {file_path}')
+        except OSError as e:
+            print(f'Error updating {file_path}: {e}')
+
         print("Debug mode enabled")
-    async def debug_disable(self):
+    
+    async def debug_disable(self): 
         log.debugger('off')
+        file_path = 'debug.txt'
+        try:
+            with open(file_path, 'w') as file:
+                file.write('debug = off\n')
+            print(f'Successfully updated {file_path}')
+        except OSError as e:
+            print(f'Error updating {file_path}: {e}')
+
         print("Debug mode disabled")
 
 async def publish_mqtt_if_connected(status, bed=None):
@@ -179,32 +198,72 @@ async def publish_mqtt_if_connected(status, bed=None):
         print(f'Outages Detected: {outages}')
     await asyncio.sleep_ms(250)
 
-
 class Logging:
     pending_post = []
     def __init__(self):
-        self.status = 'off'
+        self.status = self.read_debug_status()
+        print(f'Logger: {self.status}')
+
     def debugger(self, DEBUG_status):
         if DEBUG_status in ("on", "off"):
             self.status = DEBUG_status
             return True
         else:
             return False
-
-def post(comment=""):
-    async def send(comment):
-        if c.status == 'up' and log.status == 'on':
-            Logging.pending_post = []
-            await client.publish(f"Room {secrets.ROOM_NUMBER} Logs", comment, qos=0)
-            print(comment)
         
+    def read_debug_status(self):
+        file_path = 'debug.txt'
+        try:
+            with open(file_path, 'r') as file:
+                content = file.read().strip()
+                if content == 'debug = on':
+                    return 'on'
+                elif content == 'debug = off':
+                    return 'off'
+                else:
+                    print(f'Invalid content in {file_path}. Defaulting to debug mode off.')
+                    return 'off'
+        except OSError as e:
+            print(f'Error reading {file_path}: {e}')
+            return 'off'
+        
+    async def post(self, comment=""):
+        async def send(comment):
+            self.pending_post.append(comment)
+            print(comment)
+            print(c.status, self.status)
             print("1RAM free %d alloc %d" % (gc.mem_free(), gc.mem_alloc()))
-            Logging.pending_post.append(comment)
-            if len(Logging.pending_post) > 1:
-                return
-        else:
-            gc.collect()
-    asyncio.create_task(send(comment))
+
+            if c.status == 'up':
+                await self.send_logs()  # Send logs if client is connected
+            else:
+                try:
+                    with open('offline_logs.txt', 'a') as file:
+                        file.write(comment + '\n')  # Write logs to offline_logs.txt
+                except OSError as e:
+                    print(f'Error writing to offline_logs.txt: {e}')
+
+        asyncio.create_task(send(comment))
+
+    async def send_logs(self):
+        if c.status == 'up' and self.status == 'on':
+            logs = '\n'.join(self.pending_post)
+            await client.publish(f'Room {secrets.ROOM_NUMBER} Logs', logs, qos=0)
+            print('Logs sent successfully')
+            self.pending_post.clear()
+
+    async def send_offline_logs(self):
+        if uos.path.exists('offline_logs.txt'):
+            try:
+                with open('offline_logs.txt', 'r') as file:
+                    logs = file.read()
+                await client.publish(f'Room {secrets.ROOM_NUMBER} Logs', logs, qos=0)
+                print('Offline logs sent successfully')
+                uos.remove('offline_logs.txt')  # Delete offline logs file
+            except OSError as e:
+                print(f'Error sending offline logs: {e}')
+    # async def on_connect(self):
+    #     await self.send_offline_logs()  # Send offline logs after reconnecting
 
 class ButtonController:
     def __init__(self):
@@ -226,9 +285,9 @@ class ButtonController:
             if not button.value() and not previous_state:
                 if bed != secrets.BATHROOM:
                     print('test2')
-                    post(f"{secrets.ROOM_NUMBER}-{bed} pre-debounce triggered")
+                    await log.post(f"{secrets.ROOM_NUMBER}-{bed} pre-debounce triggered")
                 else:
-                    post(f'Bathroom {secrets.BATHROOM} pre-debounce triggered')
+                    await log.post(f'Bathroom {secrets.BATHROOM} pre-debounce triggered')
                 utime.sleep_ms(250)
                 if not button.value() and not previous_state:
                     previous_state = True
@@ -236,16 +295,16 @@ class ButtonController:
                     self.button_status(bed, 'on')
                     print("RAM free %d alloc %d" % (gc.mem_free(), gc.mem_alloc()))
                     if bed != secrets.BATHROOM:
-                        post(f"{secrets.ROOM_NUMBER}-{bed} post-debounce triggered")
+                        await log.post(f"{secrets.ROOM_NUMBER}-{bed} post-debounce triggered")
                     else:
-                        post(f'Bathroom {secrets.BATHROOM} post-debounce triggered')
+                        await log.post(f'Bathroom {secrets.BATHROOM} post-debounce triggered')
             elif button.value() and previous_state:
                 previous_state = False
                 if bed != secrets.BATHROOM:
-                    post(f"{secrets.ROOM_NUMBER}-{bed} button released")
+                    await log.post(f"{secrets.ROOM_NUMBER}-{bed} button released")
                 else:
-                    post(f"Bathroom {secrets.BATHROOM} button released")
-                post(f'{self.status}')
+                    await log.post(f"Bathroom {secrets.BATHROOM} button released")
+                await log.post(f'{self.status}')
                 await asyncio.sleep(0)
             await asyncio.sleep_ms(0)
 
@@ -264,7 +323,7 @@ class ButtonController:
         pixels.show()
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
-        post(f'{secrets.ROOM_NUMBER}-{bed} buzzer and light are on')
+        await log.post(f'{secrets.ROOM_NUMBER}-{bed} buzzer and light are on')
         await asyncio.sleep(0)
 
     async def button_pressed(self, bed):
@@ -273,16 +332,16 @@ class ButtonController:
     async def keep_on_if_still_pressed(self, bed, prev):
         if prev == False:
             await self.pixel_buzzer_on(bed)
-            post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed')
+            await log.post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed')
 
     async def off_handler(self, button, previous_state):
         while True:
             if not button.value() and not previous_state:
-                post(f'{secrets.ROOM_NUMBER}-off button pre-debounce triggered')
+                await log.post(f'{secrets.ROOM_NUMBER}-off button pre-debounce triggered')
                 utime.sleep_ms(250)
                 if not button.value() and not previous_state:
                     previous_state = True
-                    post(f'{secrets.ROOM_NUMBER}-off button post-debounce triggered')
+                    await log.post(f'{secrets.ROOM_NUMBER}-off button post-debounce triggered')
                     await self.turn_off_all_beds()
                     await self.keep_on_if_still_pressed("1", bed1_btn.value())
                     await self.keep_on_if_still_pressed("2", bed2_btn.value())
@@ -292,14 +351,14 @@ class ButtonController:
                         await self.keep_on_if_still_pressed("4", bed4_btn.value())
             elif button.value() and previous_state:
                 previous_state = False
-                post(f'{secrets.ROOM_NUMBER}-off button released')
+                await log.post(f'{secrets.ROOM_NUMBER}-off button released')
             await asyncio.sleep_ms(0)
 
     async def turn_off_all_beds(self):
         pixels.clear()
         pixels.show()
         buzzer.duty_u16(0)
-        post(f'{secrets.ROOM_NUMBER} buzzer and lights turned off')
+        await log.post(f'{secrets.ROOM_NUMBER} buzzer and lights turned off')
         for bed in self.status:
             self.button_status(bed, 'off')
         await asyncio.sleep(0)
