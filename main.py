@@ -127,7 +127,7 @@ class Connection:
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
         await asyncio.sleep(0)
-
+        
     async def handle_reset(self):
         machine.reset()
         await asyncio.sleep(0)
@@ -142,6 +142,15 @@ class Connection:
         if self.status == 'up':
             await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} has been updated! Please reset device.')
             await log.post(f"Room {secrets.ROOM_NUMBER} has been successfully updated")
+        if not button.value() and not previous_state:
+            utime.sleep_ms(450)
+            if not button.value() and not previous_state:
+                previous_state = True
+                await button_pressed(bed)
+                if outages == 0:
+                    await publish_mqtt_if_connected("on", bed)
+        elif button.value() and previous_state:
+            previous_state = False
             await asyncio.sleep(0)
 
     async def handle_answered(self):
@@ -309,6 +318,12 @@ class ButtonController:
 
     async def off_handler(self, button, previous_state):
         while True:
+
+async def off_handler(button, previous_state):
+    global outages
+    while True:
+        if not button.value() and not previous_state:
+            utime.sleep_ms(450)
             if not button.value() and not previous_state:
                 await log.post(f'{secrets.ROOM_NUMBER}-off button pre-debounce triggered')
                 utime.sleep_ms(250)
