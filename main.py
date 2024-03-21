@@ -113,7 +113,7 @@ class Connection:
                         ota.download_and_install_update_if_available()
                         print('success!')
                 except Exception as e:
-                    print(f"1Error updating files: {e}")
+                    print(f"Error updating files: {e}")
 
             action_mapping = {
                 f"Room {secrets.ROOM_NUMBER}-1 has been pressed": lambda: self.handle_room_pressed(0, 0, orange),
@@ -137,10 +137,9 @@ class Connection:
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
         await asyncio.sleep(0)
-
+        
     async def handle_reset(self):
         machine.reset()
-        await asyncio.sleep(0)
 
     async def return_status(self):
         status_bytes = str(b.status).encode('utf-8')
@@ -150,6 +149,7 @@ class Connection:
     async def handle_answered(self):
         await b.turn_off_all_beds()
         await asyncio.sleep(0)
+
     async def debug_enable(self): 
         log.debugger('on')
         file_path = 'debug.txt'
@@ -313,23 +313,25 @@ class ButtonController:
     async def off_handler(self, button, previous_state):
         while True:
             if not button.value() and not previous_state:
-                await log.post(f'{secrets.ROOM_NUMBER}-off button pre-debounce triggered')
-                utime.sleep_ms(250)
+                utime.sleep_ms(450)
                 if not button.value() and not previous_state:
-                    previous_state = True
-                    await log.post(f'{secrets.ROOM_NUMBER}-off button post-debounce triggered')
-                    await self.turn_off_all_beds()
-                    await self.keep_on_if_still_pressed("1", bed1_btn.value())
-                    await self.keep_on_if_still_pressed("2", bed2_btn.value())
-                    await self.keep_on_if_still_pressed(secrets.BATHROOM, bth_btn.value())
-                    if secrets.NUMBER_OF_BEDS > 2:
-                        await self.keep_on_if_still_pressed("3", bed3_btn.value())
-                        await self.keep_on_if_still_pressed("4", bed4_btn.value())
-            elif button.value() and previous_state:
-                previous_state = False
-                await log.post(f'{secrets.ROOM_NUMBER}-off button released')
-                await gc_clear()
-            await asyncio.sleep_ms(0)
+                    await log.post(f'{secrets.ROOM_NUMBER}-off button pre-debounce triggered')
+                    utime.sleep_ms(250)
+                    if not button.value() and not previous_state:
+                        previous_state = True
+                        await log.post(f'{secrets.ROOM_NUMBER}-off button post-debounce triggered')
+                        await self.turn_off_all_beds()
+                        await self.keep_on_if_still_pressed("1", bed1_btn.value())
+                        await self.keep_on_if_still_pressed("2", bed2_btn.value())
+                        await self.keep_on_if_still_pressed(secrets.BATHROOM, bth_btn.value())
+                        if secrets.NUMBER_OF_BEDS > 2:
+                            await self.keep_on_if_still_pressed("3", bed3_btn.value())
+                            await self.keep_on_if_still_pressed("4", bed4_btn.value())
+                elif button.value() and previous_state:
+                    previous_state = False
+                    await log.post(f'{secrets.ROOM_NUMBER}-off button released')
+                    await gc_clear()
+                await asyncio.sleep_ms(0)
 
     async def turn_off_all_beds(self):
         pixels.clear()
