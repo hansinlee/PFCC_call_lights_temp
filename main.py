@@ -24,8 +24,6 @@ green = (0, 255, 0)
 blue = (0, 0, 255)
 red = (255, 0, 0)
 
-pixels.brightness(150)
-
 bed1_btn = Pin(20,Pin.IN,Pin.PULL_UP)
 bed1_prev_state = bed1_btn.value()
 bed2_btn = Pin(18,Pin.IN,Pin.PULL_UP) #PCB layout reverses bed2 & off buttons
@@ -44,8 +42,6 @@ onboard_led = Pin('LED', Pin.OUT)
 wlan = network.WLAN(network.STA_IF)
 wlan_ip = wlan.ifconfig()
 
-# MQTT Client
-client = MQTTClient(config)
 # Buzzer
 buzzer = PWM(Pin(28))
 buzz_freq = 250
@@ -212,7 +208,7 @@ class Logging:
         async def send(comment):
             self.pending_post.append(comment)
             self.dprint('Connection Status: %s, Debug Status: %s', c.status, self.status)
-            self.dprint('3RAM free %d alloc %d', gc.mem_free(), gc.mem_alloc())
+            self.dprint('RAM free %d alloc %d', gc.mem_free(), gc.mem_alloc())
             if c.status == 'up' and self.status == 'on':
                 await self.send_logs()  # Send logs if client is connected
             else:
@@ -311,27 +307,24 @@ class ButtonController:
             await log.post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed')
 
     async def off_handler(self, button, previous_state):
+        await asyncio.sleep(0)
         while True:
             if not button.value() and not previous_state:
-                utime.sleep_ms(450)
+                utime.sleep_ms(250)
                 if not button.value() and not previous_state:
                     await log.post(f'{secrets.ROOM_NUMBER}-off button pre-debounce triggered')
-                    utime.sleep_ms(250)
-                    if not button.value() and not previous_state:
-                        previous_state = True
-                        await log.post(f'{secrets.ROOM_NUMBER}-off button post-debounce triggered')
-                        await self.turn_off_all_beds()
-                        await self.keep_on_if_still_pressed("1", bed1_btn.value())
-                        await self.keep_on_if_still_pressed("2", bed2_btn.value())
-                        await self.keep_on_if_still_pressed(secrets.BATHROOM, bth_btn.value())
-                        if secrets.NUMBER_OF_BEDS > 2:
-                            await self.keep_on_if_still_pressed("3", bed3_btn.value())
-                            await self.keep_on_if_still_pressed("4", bed4_btn.value())
-                elif button.value() and previous_state:
-                    previous_state = False
-                    await log.post(f'{secrets.ROOM_NUMBER}-off button released')
-                    await gc_clear()
-                await asyncio.sleep_ms(0)
+                    await self.turn_off_all_beds()
+                    await self.keep_on_if_still_pressed("1", bed1_btn.value())
+                    await self.keep_on_if_still_pressed("2", bed2_btn.value())
+                    await self.keep_on_if_still_pressed(secrets.BATHROOM, bth_btn.value())
+                    if secrets.NUMBER_OF_BEDS > 2:
+                        await self.keep_on_if_still_pressed("3", bed3_btn.value())
+                        await self.keep_on_if_still_pressed("4", bed4_btn.value())
+            elif button.value() and previous_state:
+                previous_state = False
+                await log.post(f'{secrets.ROOM_NUMBER}-off button released')
+                await gc_clear()
+            await asyncio.sleep_ms(0)
 
     async def turn_off_all_beds(self):
         pixels.clear()
@@ -424,6 +417,7 @@ async def main(client):
     asyncio.create_task(c.network_status())
     asyncio.create_task(led_flash())
     asyncio.create_task(test_values())
+
     try:
         await client.connect()
     except OSError as e:
@@ -442,14 +436,21 @@ config['clean'] = False
 # Set up classes. Enable optional debug statements.
 MQTTClient.DEBUG = True
 client = MQTTClient(config)
+print('MQTTclient Initialized')
 c = Connection()
+print('Connection Established')
 b = ButtonController()
+print('Button Controller Initialized')
 log = Logging()
+print('Logging Initilized')
 m = MemoryResetCount()
+print('Memory Initialized')
 o = Outages()
+print('Outages Initialized')
 
 try:
     asyncio.run(main(client))
+    print('Main Running')
 finally:  # Prevent LmacRxBlk:1 errors.
     client.close()
     asyncio.new_event_loop()
