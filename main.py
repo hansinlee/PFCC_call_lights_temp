@@ -12,11 +12,10 @@ import gc
 import secrets
 import uos as os
 from debug import MemoryResetCount, Outages
-from typing import Optional
+import json
 
 gc.collect()
 
-ota_updater = OTAUpdater(secrets.FIRMWARE_URL, "main.py")
 pixels = Neopixel(4, 0, 27, "GRB")
 
 magenta = (255,0,255)
@@ -103,6 +102,18 @@ class Connection:
         async for topic, msg, retained in client.queue:
             decoded_msg = msg.decode('utf-8')
             log.dprint('Topic: "%s" Message: "%s" Retained: "%s"', topic.decode(), decoded_msg, retained)
+            
+            if decoded_msg.startswith(f'Room {secrets.ROOM_NUMBER} Update'):
+                try:
+                    update_info = json.loads(decoded_msg.split(".", 1)[1])
+
+                    for url, filename in update_info.items():
+                        print(url, filename)
+                        ota = OTAUpdater(url, filename)
+                        ota.download_and_install_update_if_available()
+                        print('success!')
+                except Exception as e:
+                    print(f"1Error updating files: {e}")
 
             action_mapping = {
                 f"Room {secrets.ROOM_NUMBER}-1 has been pressed": lambda: self.handle_room_pressed(0, 0, orange),
@@ -111,7 +122,6 @@ class Connection:
                 f"Room {secrets.ROOM_NUMBER}-4 has been pressed": lambda: self.handle_room_pressed(3, 3, green),
                 f"Bathroom {secrets.BATHROOM} has been pressed": lambda: self.handle_room_pressed(0, 3, red),
                 f'Room {secrets.ROOM_NUMBER} Reset': lambda: self.handle_reset(),
-                f'Room {secrets.ROOM_NUMBER} Update': lambda: self.handle_update(),
                 f"Room {secrets.ROOM_NUMBER} has been answered": lambda: self.handle_answered(),
                 f"Room {secrets.ROOM_NUMBER} Pin Status": lambda: self.return_status(),
                 f"Room {secrets.ROOM_NUMBER} debug enable": lambda: self.debug_enable(),
@@ -136,13 +146,6 @@ class Connection:
         status_bytes = str(b.status).encode('utf-8')
         await client.publish(f'{secrets.ROOM_NUMBER} off status', status_bytes, qos=1)
         await asyncio.sleep(0)
-
-    async def handle_update(self):
-        ota_updater.download_and_install_update_if_available()
-        if self.status == 'up':
-            await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} has been updated! Please reset device.')
-            await log.post(f"Room {secrets.ROOM_NUMBER} has been successfully updated")
-            await asyncio.sleep(0)
 
     async def handle_answered(self):
         await b.turn_off_all_beds()
@@ -431,6 +434,8 @@ async def main(client):
         asyncio.create_task(task(client))
     while True:
         await asyncio.sleep_ms(0)
+# Define configuration
+config['clean'] = False
 
 # Set up classes. Enable optional debug statements.
 MQTTClient.DEBUG = True

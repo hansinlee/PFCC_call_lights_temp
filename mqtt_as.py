@@ -1,7 +1,7 @@
 # mqtt_as.py Asynchronous version of umqtt.robust
 # (C) Copyright Peter Hinch 2017-2022.
 # Released under the MIT licence.
-
+# test1
 # Pyboard D support added also RP2/default
 # Various improvements contributed by Kevin Köck.
 
@@ -92,7 +92,7 @@ config = {
     "ssl_params": {},
     "response_time": 10,
     "clean_init": True,
-    "clean": False,
+    "clean": True,
     "max_repubs": 10,
     "will": (secrets.TOPIC, f'Room {secrets.ROOM_NUMBER} connected!', False, 0),
     "subs_cb": lambda *_: None,

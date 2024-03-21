@@ -1,4 +1,3 @@
-import network
 import urequests
 import os
 import json
@@ -60,7 +59,7 @@ class OTAUpdater:
 
         # Save the fetched code and update the version file to latest version.
         with open('latest_code.py', 'w') as f:
-            f.write(self.latest_code)
+            f.write(self.latest_code) # type: ignore
         
         # update the version in memory
         self.current_version = self.latest_version
@@ -96,7 +95,7 @@ class OTAUpdater:
         response = urequests.get(self.version_url, headers=headers)
         
         data = json.loads(response.text)
-       
+        print('OID Version check')
         self.latest_version = data['oid']                   # Access directly the id managed by GitHub
         print(f'latest version is: {self.latest_version}')
         
