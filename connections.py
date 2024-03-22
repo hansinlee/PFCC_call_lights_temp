@@ -5,7 +5,7 @@ from ota import OTAUpdater
 import secrets
 import json
 from buttons import ButtonController
-from logging import Logging()
+from logging import Logging
 
 log = Logging()
 b = ButtonController()
