@@ -40,39 +40,52 @@ class OTAUpdater:
         
     def fetch_latest_code(self)->bool:
         """ Fetch the latest code from the repo, returns False if not found."""
-        
+
         # Fetch the latest code from the repo.
         response = urequests.get(self.firmware_url)
         if response.status_code == 200:
             print(f'Fetched latest firmware code, status: {response.status_code}')
-    
+
             # Save the fetched code to memory
             self.latest_code = response.text
             return True
-        
+
         elif response.status_code == 404:
             print('Firmware not found.')
             return False
 
-    def update_no_reset(self):
-        """ Update the code without resetting the device."""
+    def delete_no_reset(self, delete_file):
+        if delete_file in os.listdir():
+            try:
+                os.remove(delete_file)
+            except OSError as e:
+                print(f'Error deleting old file: {e}')
+
+    def update_no_reset(self, action=None, new_filename=None):
+        """Update the code without resetting the device."""
+        if action == "rename" and new_filename:
+            # Rename the old file to the new filename
+            os.rename(self.filename, new_filename)
+            print(f"Renamed old file '{self.filename}' to '{new_filename}'")
+            self.filename = new_filename
 
         # Save the fetched code and update the version file to latest version.
         with open('latest_code.py', 'w') as f:
             f.write(self.latest_code) # type: ignore
-        
+
         # update the version in memory
         self.current_version = self.latest_version
 
         # save the current version
         with open('version.json', 'w') as f:
             json.dump({'version': self.current_version}, f)
-        
+
         # free up some memory
         self.latest_code = None
 
         # Overwrite the old code.
         os.rename('latest_code.py', self.filename)
+
 
     def update_and_reset(self):
         """ Update the code and reset the device."""
@@ -105,11 +118,11 @@ class OTAUpdater:
         print(f'Newer version available: {newer_version_available}')    
         return newer_version_available
     
-    def download_and_install_update_if_available(self):
+    def download_and_install_update_if_available(self, action, new_filename):
         """ Check for updates, download and install them."""
         if self.check_for_updates():
             if self.fetch_latest_code():
-                self.update_no_reset()
+                self.update_no_reset(action, new_filename)
                 print('Update completed, restart device.')
         else:
             print('No new updates available.')

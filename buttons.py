@@ -1,26 +1,26 @@
 from neopixel import Neopixel
-from mqtt_as import MQTTClient, config
 import secrets
+from mqtt_as import MQTTClient, config
 import uasyncio as asyncio
 import utime as time
 from machine import PWM, Pin
-from logging import Logging
+from logging import Logging, RamStatus
 import gc
 
-log = Logging()
-# Buzzer
-buzzer = PWM(Pin(28))
+r = RamStatus()
+
+
 buzz_freq = 250
 buzz_duty = 10000
-
 pixels = Neopixel(4, 0, 27, "GRB")
-
 magenta = (255,0,255)
 orange = (255, 50, 0)
 green = (0, 255, 0)
 blue = (0, 0, 255)
 red = (255, 0, 0)
 
+
+buzzer = PWM(Pin(28))
 bed1_btn = Pin(20,Pin.IN,Pin.PULL_UP)
 bed1_prev_state = bed1_btn.value()
 bed2_btn = Pin(18,Pin.IN,Pin.PULL_UP) #PCB layout reverses bed2 & off buttons
@@ -35,21 +35,29 @@ off_btn = Pin(21,Pin.IN,Pin.PULL_UP) #PCB layout reverses bed2 & off buttons
 off_prev_state = off_btn.value()
 onboard_led = Pin('LED', Pin.OUT)
 
-client = MQTTClient(config)
-
 
 class ButtonController:
-    def __init__(self):
+    def __init__(self, log):
         self.status = {'1': 'off', '2': 'off', '3': 'off', '4': 'off', secrets.BATHROOM: 'off'} # Initialize button state
-    
+        # self.client = client
+        self.log = log
     async def gc_clear(self):
         if gc.mem_free() <= 30000:
             gc.collect()
-            # m.update_ram_count()
+            r.update_ram_count()
             await asyncio.sleep(0)
 
     def get_button_status(self, bed):
         return self.status.get(bed, 'off')
+
+    async def network_status(self, client):
+        while True:
+            print(f'Button Client: {client.isconnected()}')
+            if client.isconnected():
+                return True
+            else:
+                return False
+            await asyncio.sleep(10)
 
     def button_status(self, bed, current_status): # Handles button status per bed/bathroom.
         if bed in self.status and current_status in ('on', 'off'):
@@ -63,25 +71,26 @@ class ButtonController:
             await asyncio.sleep(0)
             if not button.value() and not previous_state:
                 if bed != secrets.BATHROOM:
-                    await log.post(f"{secrets.ROOM_NUMBER}-{bed} pre-debounce triggered") # Logs pre-debounce. If pre-debounce is triggered and not followed by post-debounce, adjust debounce_ms.
+                    await self.log.post(f"{secrets.ROOM_NUMBER}-{bed} pre-debounce triggered") # Logs pre-debounce. If pre-debounce is triggered and not followed by post-debounce, adjust debounce_ms.
                 else:
-                    await log.post(f'Bathroom {secrets.BATHROOM} pre-debounce triggered')
+                    await self.log.post(f'Bathroom {secrets.BATHROOM} pre-debounce triggered')
                 time.sleep_ms(250) # Adds debounce - adjust accordingly.
                 if not button.value() and not previous_state:
                     previous_state = True
                     await self.button_pressed(bed)
                     self.button_status(bed, 'on')
+                    print('1test')
                     if bed != secrets.BATHROOM:
-                        await log.post(f"{secrets.ROOM_NUMBER}-{bed} post-debounce triggered")
+                        await self.log.post(f"{secrets.ROOM_NUMBER}-{bed} post-debounce triggered")
                     else:
-                        await log.post(f'Bathroom {secrets.BATHROOM} post-debounce triggered')
+                        await self.log.post(f'Bathroom {secrets.BATHROOM} post-debounce triggered')
             elif button.value() and previous_state:
                 previous_state = False
                 if bed != secrets.BATHROOM:
-                    await log.post(f"{secrets.ROOM_NUMBER}-{bed} button released")
+                    await self.log.post(f"{secrets.ROOM_NUMBER}-{bed} button released")
                 else:
-                    await log.post(f"Bathroom {secrets.BATHROOM} button released")
-                await log.post(f'{self.status}')
+                    await self.log.post(f"Bathroom {secrets.BATHROOM} button released")
+                await self.log.post(f'{self.status}')
                 await self.gc_clear()
                 await asyncio.sleep(0)
             await asyncio.sleep_ms(0)
@@ -104,14 +113,14 @@ class ButtonController:
         pixels.show()
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
-        await log.post(f'{secrets.ROOM_NUMBER}-{bed} buzzer and light are on')
+        await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} buzzer and light are on')
         await asyncio.sleep(0)
 
     async def off_handler(self, button, previous_state):
         while True:
             await asyncio.sleep(0)
             if not button.value() and not previous_state:
-                await log.post(f'{secrets.ROOM_NUMBER}-off button pre-debounce triggered')
+                await self.log.post(f'{secrets.ROOM_NUMBER}-off button pre-debounce triggered')
                 time.sleep_ms(250)
                 if not button.value() and not previous_state:
                     previous_state = True
@@ -122,10 +131,10 @@ class ButtonController:
                     if secrets.NUMBER_OF_BEDS > 2:
                         await self.keep_on_if_still_pressed("3", bed3_btn.value())
                         await self.keep_on_if_still_pressed("4", bed4_btn.value())
-                    await log.post(f'{secrets.ROOM_NUMBER}-off button post-debounce triggered')
+                    await self.log.post(f'{secrets.ROOM_NUMBER}-off button post-debounce triggered')
             elif button.value() and previous_state:
                 previous_state = False
-                await log.post(f'{secrets.ROOM_NUMBER}-off button released')
+                await self.log.post(f'{secrets.ROOM_NUMBER}-off button released')
                 await self.gc_clear()
                 await asyncio.sleep(0)
             await asyncio.sleep_ms(0)
@@ -136,12 +145,12 @@ class ButtonController:
         buzzer.duty_u16(0)
         for bed in self.status:
             self.button_status(bed, 'off')
-            await log.post(f'{secrets.ROOM_NUMBER} all lights and buzzers are turned off')
+            await self.log.post(f'{secrets.ROOM_NUMBER} all lights and buzzers are turned off')
 
     async def keep_on_if_still_pressed(self, bed, prev):
         if prev == False:
             await self.pixel_buzzer_on(bed)
-            await log.post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed')
+            await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed')
 
     async def test_values(self):
         beds_to_check = ['1', '2', '3', '4', secrets.BATHROOM]
@@ -167,51 +176,36 @@ class ButtonController:
         retries = 10
         retry_count = 0
 
-        if client.isconnected() == True:
+        if self.log.client.isconnected():
             await asyncio.sleep(0)
             try:
                 if status == "on":
                     if bed == secrets.BATHROOM:
-                        await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos=1)
+                        await self.log.client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos=1)
                     else:
-                        await client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos=1)
+                        await self.log.client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos=1)
                 elif status == 'off':
-                    await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos=1)
+                    await self.log.client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos=1)
             except Exception as e:
                 # Handle the exception here
-                log.dprint('Error publishing message: %s', e)
+                self.log.client.dprint('Error publishing message: %s', e)
         else:
-            while client.isconnected() == False and retry_count < retries:
+            while self.log.client.isconnected() == False and retry_count < retries:
                 try:
                     if status == "on":
                         if bed == secrets.BATHROOM:
-                            await client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos=1)
+                            await self.log.client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos=1)
                         else:
-                            await client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos=1)
+                            await self.log.client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos=1)
                     elif status == 'off':
-                        await client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos=1)
+                        await self.log.client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos=1)
                     retry_count += 1
                 except Exception as e:
                     # Handle the exception here
-                    log.dprint('Error publishing message: %s', e)
-            # log.dprint('Outages Detected: %s', o.outages_count)
+                    self.log.client.dprint('Error publishing message: %s', e)
+            # self.log.client.dprint('Outages Detected: %s', o.outages_count)
             await asyncio.sleep_ms(0)
 
-
-    async def button_action_mapping(self, decoded_msg):
-        print(decoded_msg)
-        action_mapping = {
-            f"Room {secrets.ROOM_NUMBER}-1 has been pressed": lambda: self.handle_room_pressed(0, 0, orange),
-            f"Room {secrets.ROOM_NUMBER}-2 has been pressed": lambda: self.handle_room_pressed(1, 1, magenta),
-            f"Room {secrets.ROOM_NUMBER}-3 has been pressed": lambda: self.handle_room_pressed(2, 2, blue),
-            f"Room {secrets.ROOM_NUMBER}-4 has been pressed": lambda: self.handle_room_pressed(3, 3, green),
-            f"Bathroom {secrets.BATHROOM} has been pressed": lambda: self.handle_room_pressed(0, 3, red),
-            f"Room {secrets.ROOM_NUMBER} has been answered": lambda: self.handle_answered(),
-        }
-
-        if decoded_msg in action_mapping:
-            await action_mapping[decoded_msg]()  # Execute the corresponding function
-            await asyncio.sleep(0)
 
     async def handle_room_pressed(self, pixel_line, pixel_index, color):
         pixels.set_pixel_line(pixel_line, pixel_index, color)
@@ -222,4 +216,9 @@ class ButtonController:
     
     async def handle_answered(self):
         await self.turn_off_all_beds()
+        await asyncio.sleep(0)
+
+    async def return_status(self):
+        status_bytes = str(self.status).encode('utf-8')
+        await self.log.client.publish(f'{secrets.ROOM_NUMBER} off status', status_bytes, qos=1)
         await asyncio.sleep(0)
