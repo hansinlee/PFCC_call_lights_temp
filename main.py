@@ -1,4 +1,3 @@
-#test 2
 import utime
 utime.sleep(1)
 
@@ -157,14 +156,43 @@ async def messages(client):
         print(f'Topic: "{topic.decode()}" Message: "{msg.decode()}" Retained: {retained}')
         msg = msg.decode('utf-8')
         print(msg)
+        if msg == f"Room {secrets.ROOM_NUMBER}-1 has been pressed":
+            pixels.set_pixel_line(0, 0, orange)
+            pixels.show()
+            buzzer.freq(buzz_freq)
+            buzzer.duty_u16(buzz_duty)
+        if msg == f"Room {secrets.ROOM_NUMBER}-2 has been pressed":
+            pixels.set_pixel_line(1, 1, magenta)
+            pixels.show()
+            buzzer.freq(buzz_freq)
+            buzzer.duty_u16(buzz_duty)
+        if msg == f"Room {secrets.ROOM_NUMBER}-3 has been pressed":
+            pixels.set_pixel_line(2, 2, blue)
+            pixels.show()
+            buzzer.freq(buzz_freq)
+            buzzer.duty_u16(buzz_duty)
+        if msg == f"Room {secrets.ROOM_NUMBER}-4 has been pressed":
+            pixels.set_pixel_line(3, 3, green)
+            pixels.show()
+            buzzer.freq(buzz_freq)
+            buzzer.duty_u16(buzz_duty)
+        if msg == f"Bathroom {secrets.BATHROOM} has been pressed":
+            pixels.set_pixel_line(0, 3, red)
+            pixels.show()
+            buzzer.freq(buzz_freq)
+            buzzer.duty_u16(buzz_duty)
         if msg == f'Room {secrets.ROOM_NUMBER} Reset':
             machine.reset()
         if msg.startswith(f'Room {secrets.ROOM_NUMBER} Update'):
             try:
-                filename = msg.split("|", 1)[1]
-                OTAUpdater("https://raw.githubusercontent.com/hansinlee/PFCC_call_lights_temp/main", filename).download_and_install_update_if_available()
-                if outages == 0:
-                    await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} has been updated! Please reset device.')
+                update_info = json.loads(msg.split("|", 1)[1])
+                for url, info in update_info.items():
+                    filename = info.get('filename')
+                    if outages == 0:
+                        print(filename)
+                        print(url)
+                        OTAUpdater(url, filename).download_and_install_update_if_available()
+                        await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} has been updated! Please reset device.')
             except Exception as e:
                 print(f'Error updating file: {e}')
         if msg == f"Room {secrets.ROOM_NUMBER} has been answered":
