@@ -79,7 +79,6 @@ class MsgQueue:
         self._ri = (self._ri + 1) % self._size
         return r
 
-
 config = {
     "client_id": hexlify(unique_id()),
     "server": secrets.MQTT_SERVER,
@@ -107,7 +106,6 @@ config = {
 class MQTTException(Exception):
     pass
 
-
 def pid_gen():
     pid = 0
     while True:
@@ -117,7 +115,6 @@ def pid_gen():
 def qos_check(qos):
     if not (qos == 0 or qos == 1):
         raise ValueError("Only qos 0 and 1 are supported.")
-
 
 # MQTT_base class. Handles MQTT protocol on the basis of a good connection.
 # Exceptions from connectivity failures are handled by MQTTClient subclass.

@@ -1,63 +1,33 @@
 from neopixel import Neopixel
 import secrets
-from mqtt_as import MQTTClient, config
 import uasyncio as asyncio
 import utime as time
-from machine import PWM, Pin
-from logging import Logging, RamStatus
 import gc
 
-r = RamStatus()
+from config import (
+    buzzer, buzz_freq, buzz_duty, 
+    pixels, magenta, orange, green, blue, red,
+    bed1_btn, bed2_btn, bed3_btn, bed4_btn, bth_btn
+)
 
-
-buzz_freq = 250
-buzz_duty = 10000
-pixels = Neopixel(4, 0, 27, "GRB")
-magenta = (255,0,255)
-orange = (255, 50, 0)
-green = (0, 255, 0)
-blue = (0, 0, 255)
-red = (255, 0, 0)
-
-
-buzzer = PWM(Pin(28))
-bed1_btn = Pin(20,Pin.IN,Pin.PULL_UP)
-bed1_prev_state = bed1_btn.value()
-bed2_btn = Pin(18,Pin.IN,Pin.PULL_UP) #PCB layout reverses bed2 & off buttons
-bed2_prev_state = bed2_btn.value()
-bed3_btn = Pin(17,Pin.IN,Pin.PULL_UP)
-bed3_prev_state = bed3_btn.value()
-bed4_btn = Pin(16,Pin.IN,Pin.PULL_UP)
-bed4_prev_state = bed4_btn.value()
-bth_btn = Pin(19,Pin.IN,Pin.PULL_UP)
-bth_prev_state = bth_btn.value()
-off_btn = Pin(21,Pin.IN,Pin.PULL_UP) #PCB layout reverses bed2 & off buttons
-off_prev_state = off_btn.value()
-onboard_led = Pin('LED', Pin.OUT)
-
+gc.collect()
 
 class ButtonController:
-    def __init__(self, log):
+    def __init__(self, log, r):
         self.status = {'1': 'off', '2': 'off', '3': 'off', '4': 'off', secrets.BATHROOM: 'off'} # Initialize button state
         # self.client = client
         self.log = log
+        self.r = r
+
     async def gc_clear(self):
         if gc.mem_free() <= 30000:
             gc.collect()
-            r.update_ram_count()
+            self.r.update_ram_count()
+            self.log.client.dprint("Ram Reset: %s", self.r.status)
             await asyncio.sleep(0)
 
     def get_button_status(self, bed):
         return self.status.get(bed, 'off')
-
-    async def network_status(self, client):
-        while True:
-            print(f'Button Client: {client.isconnected()}')
-            if client.isconnected():
-                return True
-            else:
-                return False
-            await asyncio.sleep(10)
 
     def button_status(self, bed, current_status): # Handles button status per bed/bathroom.
         if bed in self.status and current_status in ('on', 'off'):
@@ -79,7 +49,6 @@ class ButtonController:
                     previous_state = True
                     await self.button_pressed(bed)
                     self.button_status(bed, 'on')
-                    print('1test')
                     if bed != secrets.BATHROOM:
                         await self.log.post(f"{secrets.ROOM_NUMBER}-{bed} post-debounce triggered")
                     else:
@@ -205,8 +174,6 @@ class ButtonController:
                     self.log.client.dprint('Error publishing message: %s', e)
             # self.log.client.dprint('Outages Detected: %s', o.outages_count)
             await asyncio.sleep_ms(0)
-
-
     async def handle_room_pressed(self, pixel_line, pixel_index, color):
         pixels.set_pixel_line(pixel_line, pixel_index, color)
         pixels.show()
@@ -220,5 +187,5 @@ class ButtonController:
 
     async def return_status(self):
         status_bytes = str(self.status).encode('utf-8')
-        await self.log.client.publish(f'{secrets.ROOM_NUMBER} off status', status_bytes, qos=1)
+        await self.log.client.publish(f'Room {secrets.ROOM_NUMBER} Button Status', status_bytes, qos=1)
         await asyncio.sleep(0)
