@@ -1,4 +1,3 @@
-#test 1
 import utime as time
 time.sleep_ms(250)
 
@@ -80,30 +79,18 @@ async def network_status():
 async def messages(client):
     async for topic, msg, retained in client.queue:
         decoded_msg = msg.decode('utf-8')
-        # print('Topic: "%s" Message: "%s" Retained: "%s"', topic.decode(), decoded_msg, retained)
+        print('Topic: "%s" Message: "%s" Retained: "%s"', topic.decode(), decoded_msg, retained)
         
-
         if decoded_msg.startswith(f'Room {secrets.ROOM_NUMBER} Update'):
             try:
-                update_info = json.loads(decoded_msg.split("|", 1)[1])
-
+                update_info = json.loads(msg.split("|", 1)[1])
                 for url, info in update_info.items():
                     filename = info.get('filename')
-                    action = info.get('action')
-                    new_filename = info.get('new_filename')
-                    print(f"successfully received: {filename}, {action}, {url}, {new_filename}")
-                    # Perform operations using these variables
+                    if outages == 0:
+                        OTAUpdater(url, filename).download_and_install_update_if_available()
+                        await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} has been updated! Please reset device.')
             except Exception as e:
                 print(f"Error updating files: {e}")
-        elif decoded_msg.startswith(f'Room {secrets.ROOM_NUMBER} Delete File'):
-            try:
-                update_info = json.loads(decoded_msg.split("|", 1)[1])
-                
-                for delete_file in update_info.items():
-                    print(delete_file)
-                    # ota.delete_no_reset(delete_file)
-            except Exception as e:
-                print(f"Error deleting file: {e}")
 
         action_mapping = {
             f"Room {secrets.ROOM_NUMBER}-1 has been pressed": lambda: b.handle_room_pressed(0, 0, orange),
