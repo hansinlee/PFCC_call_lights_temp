@@ -82,7 +82,7 @@ async def messages(client):
         
         if decoded_msg.startswith(f'Room {secrets.ROOM_NUMBER} Update'):
             try:
-                update_info = json.loads(msg.split("|", 1)[1])
+                update_info = json.loads(decoded_msg.split("|", 1)[1])
                 for url, info in update_info.items():
                     filename = info.get('filename')
                     if client.isconnected():
