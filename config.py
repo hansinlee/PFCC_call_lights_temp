@@ -1,5 +1,5 @@
 #configuration
-from neopixel import NeoPixel
+from neopixel import Neopixel
 from machine import PWM, Pin
 
 buzz_freq = 250
