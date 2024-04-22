@@ -8,7 +8,6 @@ from neopixel import Neopixel
 import network
 import gc
 import secrets
-import uos as os
 from buttons import ButtonController
 from logging import Logging, Outages, RamStatus
 import json
@@ -73,7 +72,7 @@ async def network_status():
     await client.publish(f'Room {secrets.ROOM_NUMBER} MAC', mac_reformat, qos = 1)
     await client.publish(f'Room {secrets.ROOM_NUMBER} IP', str(wlan.ifconfig()), qos = 1)
     while True:
-        # await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} Connected! Outages: {o.outages_count} Initial Outages: {o.init_outages_count}', qos=0)
+        await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} Connected! Outages: {o.outages_count} Initial Outages: {o.init_outages_count}', qos=0)
         await asyncio.sleep(300)
 
 async def messages(client):
@@ -86,7 +85,7 @@ async def messages(client):
                 update_info = json.loads(msg.split("|", 1)[1])
                 for url, info in update_info.items():
                     filename = info.get('filename')
-                    if outages == 0:
+                    if client.isconnected():
                         OTAUpdater(url, filename).download_and_install_update_if_available()
                         await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} has been updated! Please reset device.')
             except Exception as e:
