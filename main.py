@@ -34,18 +34,22 @@ async def led_flash():
         onboard_led.toggle()
         await asyncio.sleep(.15)
 
+def custom_print(*args, **kwargs):
+    # Custom print function to redirect output to logging
+    msg = ' '.join(map(str, args))
+    log.custom_print(msg)
+
 async def watchdog_timer(timeout):
     while True:
         await asyncio.sleep(timeout)
         machine.WDT(timeout=8388)
         await asyncio.sleep(0)
 
-
 async def down(client):
     while True:
         await client.down.wait()
         client.down.clear()
-        client.dprint(client.isconnected())
+        client.dprint("client %s", client.isconnected())
         o.update_outages(False, 1)
         client.dprint('Outages: %d  Initial Outages: %d ', o.outages_count, o.init_outages_count)
         await asyncio.sleep(0)
@@ -56,7 +60,7 @@ async def up(client):
         client.up.clear()
         client.dprint('%s', wlan.ifconfig())
         client.dprint(f"Client Status: {client.isconnected()}")
-        await log.post(f'Wifi or Broker is up! Outages: {o.outages_count} Initial Outages: {o.init_outages_count}')
+        await log.post(f'Wifi or Broker is up! Outages: {o.outages_count} Initial Outages: {o.init_outages_count}\n\n\n\n')
         await log.send_offline_logs()
         await client.publish(f"Room {secrets.ROOM_NUMBER} Outages", f"Room {secrets.ROOM_NUMBER} outage: {o.outages_count}, Initial Outages: {o.init_outages_count}", qos = 1)
         await asyncio.sleep_ms(0)
@@ -65,14 +69,17 @@ async def up(client):
 async def network_status():
     mac_reformat = ''
     mac_address = wlan.config('mac')
+    await o.count_brown_out()
+    print(o.brown_out_count)
     for digit in range(6):
         mac_reformat += f'{mac_address[digit]:02X}'
         if digit < 5:
             mac_reformat += ':'
     await client.publish(f'Room {secrets.ROOM_NUMBER} MAC', mac_reformat, qos = 1)
     await client.publish(f'Room {secrets.ROOM_NUMBER} IP', str(wlan.ifconfig()), qos = 1)
+    await client.publish(f'Room {secrets.ROOM_NUMBER} Logs', f'Room {secrets.ROOM_NUMBER}, Power Cycle Count: {o.brown_out_count}\n\n\n', qos = 1)
     while True:
-        await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} Connected! Outages: {o.outages_count} Initial Outages: {o.init_outages_count}', qos=0)
+        await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} Connected! Outages: {o.outages_count} Initial Outages: {o.init_outages_count} Power Cycles: {o.brown_out_count}', qos=1)
         await asyncio.sleep(300)
 
 async def messages(client):
@@ -145,8 +152,6 @@ log = Logging(client)
 o = Outages(log)
 r = RamStatus()
 b = ButtonController(log, r)
-
-MQTTClient.DEBUG = log.status_return()
 
 try:
     asyncio.run(main(client))
