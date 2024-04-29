@@ -87,7 +87,7 @@ async def messages(client):
         decoded_msg = msg.decode('utf-8')
         print('Topic: "%s" Message: "%s" Retained: "%s"', topic.decode(), decoded_msg, retained)
         
-        if decoded_msg.startswith(f'Room {secrets.ROOM_NUMBER} Update'):
+        if decoded_msg.startswith(f'Room Update'):
             try:
                 update_info = json.loads(decoded_msg.split("|", 1)[1])
                 for url, info in update_info.items():
