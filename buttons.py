@@ -66,6 +66,8 @@ class ButtonController:
 
     async def button_pressed(self, bed):
         await self.pixel_buzzer_on(bed)
+        self.log.client.dprint(f"{secrets.ROOM_NUMBER}-{bed} button pressed")
+        self.log.client.dprint("Ram Free: %d, Ram Alloc: %d", gc.mem_free(), gc.mem_alloc())
 
     async def pixel_buzzer_on(self, bed):
         await asyncio.sleep_ms(0)
@@ -82,7 +84,7 @@ class ButtonController:
         pixels.show()
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
-        await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} buzzer and light are on')
+        await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} buzzer and light are on\n\n')
         await asyncio.sleep(0)
 
     async def off_handler(self, button, previous_state):
@@ -103,7 +105,7 @@ class ButtonController:
                     await self.log.post(f'{secrets.ROOM_NUMBER}-off button post-debounce triggered')
             elif button.value() and previous_state:
                 previous_state = False
-                await self.log.post(f'{secrets.ROOM_NUMBER}-off button released')
+                await self.log.post(f'{secrets.ROOM_NUMBER}-off button released\n\n')
                 await self.gc_clear()
                 await asyncio.sleep(0)
             await asyncio.sleep_ms(0)
@@ -112,14 +114,16 @@ class ButtonController:
         pixels.clear()
         pixels.show()
         buzzer.duty_u16(0)
+        self.log.client.dprint("Ram Free: %d, Ram Alloc: %d", gc.mem_free(), gc.mem_alloc())
+        await self.log.post(f'{secrets.ROOM_NUMBER} all lights and buzzers are turned off\n\n')
         for bed in self.status:
             self.button_status(bed, 'off')
-            await self.log.post(f'{secrets.ROOM_NUMBER} all lights and buzzers are turned off')
-
+            await asyncio.sleep(0)
+            
     async def keep_on_if_still_pressed(self, bed, prev):
         if prev == False:
             await self.pixel_buzzer_on(bed)
-            await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed')
+            await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed\n\n')
 
     async def test_values(self):
         beds_to_check = ['1', '2', '3', '4', secrets.BATHROOM]
@@ -151,29 +155,35 @@ class ButtonController:
                 if status == "on":
                     if bed == secrets.BATHROOM:
                         await self.log.client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos=1)
+                        await self.log.post(f'MQTT publish: Bathroom {secrets.BATHROOM}')
                     else:
                         await self.log.client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos=1)
+                        await self.log.post(f'MQTT publish: Room {secrets.ROOM_NUMBER}-{bed}')
                 elif status == 'off':
                     await self.log.client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos=1)
+                    await self.log.post(f'MQTT publish: Room {secrets.ROOM_NUMBER}-Off',)
             except Exception as e:
-                # Handle the exception here
                 self.log.client.dprint('Error publishing message: %s', e)
+            await asyncio.sleep(0)
         else:
             while self.log.client.isconnected() == False and retry_count < retries:
                 try:
                     if status == "on":
                         if bed == secrets.BATHROOM:
                             await self.log.client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos=1)
+                            await self.log.post(f'MQTT publish: Bathroom {secrets.BATHROOM}')
                         else:
                             await self.log.client.publish(f'{secrets.ROOM_NUMBER}-{bed}', f'Room {secrets.ROOM_NUMBER}-{bed} has been pressed', qos=1)
+                            await self.log.post(f'MQTT publish: Room {secrets.ROOM_NUMBER}-{bed}')
                     elif status == 'off':
                         await self.log.client.publish(f'{secrets.ROOM_NUMBER}-Off', f'Room {secrets.ROOM_NUMBER} has been answered', qos=1)
+                        await self.log.post(f'MQTT publish: Room {secrets.ROOM_NUMBER}-Off')
                     retry_count += 1
+                    print(retry_count)
                 except Exception as e:
-                    # Handle the exception here
                     self.log.client.dprint('Error publishing message: %s', e)
-            # self.log.client.dprint('Outages Detected: %s', o.outages_count)
             await asyncio.sleep_ms(0)
+
     async def handle_room_pressed(self, pixel_line, pixel_index, color):
         pixels.set_pixel_line(pixel_line, pixel_index, color)
         pixels.show()
