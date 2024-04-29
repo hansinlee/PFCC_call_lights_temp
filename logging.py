@@ -74,7 +74,7 @@ class Logging:
                 elif self.client.isconnected() == False and self.status == 'on':
                     try:
                         with open('offline_logs.txt', 'a') as file:
-                            file.write(comment + '\n')  # Write logs to offline_logs.txt
+                            file.write('Offline: ' + comment + '\n')  # Write logs to offline_logs.txt
                             await asyncio.sleep(0)
                     except OSError as e:
                         self.dprint('Error writing to offline_logs.txt: %s', e)
