@@ -24,6 +24,9 @@ class Logging:
     def dprint(self, msg, *args):
         if self.status == 'on':
             print(msg % args)
+    
+    def custom_print(self, msg):
+        print(msg)
 
     async def read_debug_status(self):
         if 'debug.json' in os.listdir():
@@ -32,6 +35,7 @@ class Logging:
                     debug_data = json.load(f)
                     self.status = debug_data.get('debug_mode', 'off')  # Default to 'off' if 'debug_mode' is not found
                     self.dprint('Debug Mode: %s', self.status)
+                    self.client.DEBUG = self.status_return()
             except Exception as e:
                 print("Error reading debug status:", e)
                 self.status = 'off'
@@ -63,14 +67,11 @@ class Logging:
     async def post(self, comment=""):
         async def send(comment):
             self.pending_post.append(comment)
-            self.dprint("Debug Mode: %s, Client Status: %s", self.status, self.client.isconnected())
             try:
                 if self.client.isconnected() == True and self.status == 'on':
                     await self.send_logs()
-                    print(comment)
                     gc.collect()
                 elif self.client.isconnected() == False and self.status == 'on':
-                    self.dprint('Client is not connected but logs are on')
                     try:
                         with open('offline_logs.txt', 'a') as file:
                             file.write(comment + '\n')  # Write logs to offline_logs.txt
@@ -80,15 +81,22 @@ class Logging:
                 else:
                     self.dprint('Client: %s', self.client.isconnected())
             except OSError as e:
-                print('Error writing to offline_logs.txt: %s', e)
-
+                print('Error Posting: %s', e)
         asyncio.create_task(send(comment))
 
     async def send_logs(self):
         logs = '\n'.join(self.pending_post)
-        await self.client.publish(f'Room {secrets.ROOM_NUMBER} Logs', logs, qos=0)
-        self.dprint('Logs sent successfully')
-        self.pending_post.clear()
+        try:
+            if gc.mem_free() < 50000:
+                gc.collect()
+                self.pending_post.clear()
+                raise Exception('Not enough memory')
+            else:
+                await self.client.publish(f'Room {secrets.ROOM_NUMBER} Logs', logs, qos=0)
+                self.dprint('Logs sent successfully')
+                self.pending_post.clear()
+        except Exception as e:
+            self.dprint('Error sending logs: %s', e)
 
     async def send_offline_logs(self):
         if 'offline_logs.txt' in os.listdir():
@@ -110,6 +118,28 @@ class Outages:
         self.init_outages_count = 0
         self.outages_file()
         self.log = log
+        self.brown_out_count = 0
+
+    async def count_brown_out(self):
+        file_path = 'brown_out.json'
+        try:
+            # Read current brown-out count from file
+            if file_path in os.listdir():
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                    self.brown_out_count = int(data.get('brown_out_count', 0))
+
+            # Increment brown-out count
+            self.brown_out_count += 1
+
+            # Save updated count to file
+            with open(file_path, 'w') as f:
+                json.dump({'brown_out_count': self.brown_out_count}, f)
+            self.log.dprint('Successfully updated %s', file_path)
+            await asyncio.sleep(0)
+        except OSError as e:
+            self.log.dprint('Error updating %s: %s', file_path, e)
+        
     
     async def outages_return(self):
         self.log.client.publish(f"Room {secrets.ROOM_NUMBER}", f"Init Outages: {self.init_outages_count}, Reg Outgaes: {self.outages_count}", qos = 1)
