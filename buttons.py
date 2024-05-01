@@ -3,6 +3,7 @@ import secrets
 import uasyncio as asyncio
 import utime as time
 import gc
+import json
 
 from config import (
     buzzer, buzz_freq, buzz_duty, 
@@ -14,7 +15,7 @@ gc.collect()
 
 class ButtonController:
     def __init__(self, log, r):
-        self.status = {'1': 'off', '2': 'off', '3': 'off', '4': 'off', secrets.BATHROOM: 'off'} # Initialize button state
+        self.status = {'1': 'off', '2': 'off', '3': 'off', '4': 'off', 'bathroom': 'off'} # Initialize button state
         # self.client = client
         self.log = log
         self.r = r
@@ -53,6 +54,7 @@ class ButtonController:
                         await self.log.post(f"{secrets.ROOM_NUMBER}-{bed} post-debounce triggered")
                     else:
                         await self.log.post(f'Bathroom {secrets.BATHROOM} post-debounce triggered')
+                        self.button_status('bathroom', 'on')
             elif button.value() and previous_state:
                 previous_state = False
                 if bed != secrets.BATHROOM:
@@ -84,10 +86,11 @@ class ButtonController:
         pixels.show()
         buzzer.freq(buzz_freq)
         buzzer.duty_u16(buzz_duty)
-        await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} buzzer and light are on\n\n')
+        await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} buzzer and light are on')
         await asyncio.sleep(0)
 
     async def off_handler(self, button, previous_state):
+        json_message = json.dumps(self.status)
         while True:
             await asyncio.sleep(0)
             if not button.value() and not previous_state:
@@ -103,9 +106,10 @@ class ButtonController:
                         await self.keep_on_if_still_pressed("3", bed3_btn.value())
                         await self.keep_on_if_still_pressed("4", bed4_btn.value())
                     await self.log.post(f'{secrets.ROOM_NUMBER}-off button post-debounce triggered')
+                    await self.log.post(json_message)
             elif button.value() and previous_state:
                 previous_state = False
-                await self.log.post(f'{secrets.ROOM_NUMBER}-off button released\n\n')
+                await self.log.post(f'{secrets.ROOM_NUMBER}-off button released')
                 await self.gc_clear()
                 await asyncio.sleep(0)
             await asyncio.sleep_ms(0)
@@ -115,18 +119,21 @@ class ButtonController:
         pixels.show()
         buzzer.duty_u16(0)
         self.log.client.dprint("Ram Free: %d, Ram Alloc: %d", gc.mem_free(), gc.mem_alloc())
-        await self.log.post(f'{secrets.ROOM_NUMBER} all lights and buzzers are turned off\n\n')
+        await self.log.post(f'{secrets.ROOM_NUMBER} all lights and buzzers are turned off')
         for bed in self.status:
             self.button_status(bed, 'off')
             await asyncio.sleep(0)
-            
+        json_msg = json.dumps(self.status)
+        print(json_msg, self.status)
+        await self.log.post(json_msg, 'off')
+
     async def keep_on_if_still_pressed(self, bed, prev):
         if prev == False:
             await self.pixel_buzzer_on(bed)
-            await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed\n\n')
+            await self.log.post(f'{secrets.ROOM_NUMBER}-{bed} button still pressed')
 
     async def test_values(self):
-        beds_to_check = ['1', '2', '3', '4', secrets.BATHROOM]
+        beds_to_check = ['1', '2', '3', '4', 'bathroom']
         previous_statuses = {bed: None for bed in beds_to_check}  # type: dict[str, Optional[str]]
         mqtt_sent_flags = {bed: False for bed in beds_to_check}  # Flag to track if MQTT message has been sent
 
