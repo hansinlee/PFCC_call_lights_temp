@@ -160,7 +160,7 @@ class ButtonController:
             await asyncio.sleep(0)
             try:
                 if status == "on":
-                    if bed == secrets.BATHROOM:
+                    if bed == 'bathroom':
                         await self.log.client.publish(f'Bathroom {secrets.BATHROOM}', f'Bathroom {secrets.BATHROOM} has been pressed', qos=1)
                         await self.log.post(f'MQTT publish: Bathroom {secrets.BATHROOM}')
                     else:
