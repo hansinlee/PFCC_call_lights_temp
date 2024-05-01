@@ -12,7 +12,6 @@ from buttons import ButtonController
 from logging import Logging, Outages, RamStatus
 import json
 from ota import OTAUpdater
-import ntptime
 from config import (
     magenta, orange, green, blue, red,
     bed1_btn, bed1_prev_state,
@@ -73,30 +72,14 @@ async def network_status():
     mac_address = wlan.config('mac')
     await o.count_brown_out()
     print(o.brown_out_count)
-    ntptime.settime()
-    # Retrieve the current time
-    timezone_offset_hours = -6
-    current_time = time.localtime(time.mktime(time.localtime()) + timezone_offset_hours*3600)
-    formatted_time = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d} {:s}{:02d}{:02d}".format(
-        current_time[0],  # year
-        current_time[1],  # month
-        current_time[2],  # day
-        current_time[3],  # hour
-        current_time[4],  # minute
-        current_time[5],  # second
-        '+' if timezone_offset_hours >= 0 else '-',  # sign of the timezone offset
-        abs(timezone_offset_hours),  # absolute value of the timezone offset
-        0  # minutes part of the timezone offset (always 00 in this case)
-    )
-
-    print("Formatted time:", formatted_time)
     for digit in range(6):
         mac_reformat += f'{mac_address[digit]:02X}'
         if digit < 5:
             mac_reformat += ':'
     await client.publish(f'Room {secrets.ROOM_NUMBER} MAC', mac_reformat, qos = 1)
     await client.publish(f'Room {secrets.ROOM_NUMBER} IP', str(wlan.ifconfig()), qos = 1)
-    await client.publish(f'Room {secrets.ROOM_NUMBER} Logs', f'Room {secrets.ROOM_NUMBER}, Power Cycle Count: {o.brown_out_count}, Timestamp: {formatted_time}\n\n\n', qos = 1)
+    await log.post(f'Room {secrets.ROOM_NUMBER}, Power Cycle Count: {o.brown_out_count}, Timestamp: {log.formatted_time}\n\n\n')
+
     while True:
         await client.publish(f'Room {secrets.ROOM_NUMBER}', f'Room {secrets.ROOM_NUMBER} Connected! Outages: {o.outages_count} Initial Outages: {o.init_outages_count} Power Cycles: {o.brown_out_count}', qos=1)
         await asyncio.sleep(300)
@@ -104,7 +87,7 @@ async def network_status():
 async def messages(client):
     async for topic, msg, retained in client.queue:
         decoded_msg = msg.decode('utf-8')
-        print('Topic: "%s" Message: "%s" Retained: "%s"', topic.decode(), decoded_msg, retained)
+        log.post(f'Topic: {topic.decode()}, Msg: {decoded_msg}, Retained: {retained}')
         
         if decoded_msg.startswith(f'Room Update'):
             try:
@@ -135,7 +118,6 @@ async def messages(client):
             await action_mapping[decoded_msg]()  # Execute the corresponding function
             await asyncio.sleep(0)
 
-
 async def main(client):
     asyncio.create_task(b.button_handler("1", bed1_btn, bed1_prev_state))
     asyncio.create_task(b.button_handler("2", bed2_btn, bed2_prev_state))
@@ -144,23 +126,26 @@ async def main(client):
         asyncio.create_task(b.button_handler("3", bed3_btn, bed3_prev_state))
         asyncio.create_task(b.button_handler("4", bed4_btn, bed4_prev_state))
     asyncio.create_task(b.off_handler(off_btn, off_prev_state))
-    asyncio.create_task(network_status())
     asyncio.create_task(led_flash())
     asyncio.create_task(b.test_values())
     asyncio.create_task(log.read_debug_status())
-
+    asyncio.create_task(network_status())
+    
+    
     try:
         await client.connect()
     except OSError as e:
-        print("Connection Failed! OSError: %s", e)
+        await log.post(f"Connection Failed! OSError: {e}")
         o.update_outages(False, 0)
-        print('Init Outage: %d', o.init_outages_count)
+        await log.post(f'Init Outage: {o.init_outages_count}')
         await watchdog_timer(300) # Shutoff timer when OSError is returned.
         return
     for task in (up, down, messages):
         asyncio.create_task(task(client))
     while True:
-        await asyncio.sleep_ms(0)
+        await asyncio.sleep(0)
+    
+    
 
 # Define configuration
 config['clean'] = False
@@ -168,8 +153,8 @@ config['clean'] = False
 # Set up classes. Enable optional debug statements.
 client = MQTTClient(config)
 log = Logging(client)
-o = Outages(log)
 r = RamStatus()
+o = Outages(log, r)
 b = ButtonController(log, r)
 
 
